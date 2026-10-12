@@ -22,7 +22,7 @@ Halte eine Richtung gedrückt, um dich frei zwischen den Feldern zu bewegen. Zwe
 
 Vor dem Start kannst du eine von sechs Kenney-Figuren auswählen. Die Auswahl wird im Browser gespeichert und beim nächsten Besuch wiederhergestellt.
 
-Besiege alle drei Gegner und sprenge das Portal frei. Danach betritt das Portal, um zu gewinnen. Kisten können Upgrades für Flammenreichweite und Bombenkapazität enthalten.
+Besiege alle drei Gegner und sprenge das Portal frei. Danach betritt das Portal, um zu gewinnen. Zerstörbare Hindernisse können Upgrades für Flammenreichweite, Bombenkapazität oder einen einmaligen Schutzschild enthalten. Stärkere Bomben leuchten türkis; normale Explosionen sind orange, stärkere türkis und Kettenreaktionen violett.
 
 ## Prüfen
 
@@ -55,10 +55,10 @@ Dafür ist eine lokale Cloudflare-Anmeldung mit `npx wrangler login` erforderlic
 
 ## 3D-Assets
 
-Die animierten Figuren stammen aus den Kenney-Paketen `Mini Characters` und `Mini Arena`. Die festen Steinblöcke sowie die zerstörbaren Holzgerüste, Fässer und die Portaltruhe stammen aus dem [Kenney-Paket Mini Dungeon](https://kenney.nl/assets/mini-dungeon). Ihre GLB-Dateien und Farbtexturen liegen unter `public/assets/kenney/`; die jeweiligen CC0-Lizenzen liegen daneben. Die Modelle werden im Spiel skaliert. Bei einem Ladefehler bleiben die ursprünglichen Three.js-Formen als technische Rückfallebene nutzbar.
+Die animierten Figuren stammen aus den Kenney-Paketen `Mini Characters` und `Mini Arena`. Die festen türkis getönten Mauerblöcke nutzen ein Modell aus [Mini Arena](https://kenney.nl/assets/mini-arena). Holzgerüste, Fässer und die Portaltruhe stammen aus [Mini Dungeon](https://kenney.nl/assets/mini-dungeon). Ihre GLB-Dateien und Farbtexturen liegen unter `public/assets/kenney/`; die jeweiligen CC0-Lizenzen liegen daneben. Die Modelle werden im Spiel skaliert. Bei einem Ladefehler bleiben Three.js-Formen als technische Rückfallebene nutzbar.
 
 Die sechs auswählbaren Figuren und ihre Vorschauen wurden aus dem [offiziellen Mini-Characters-Paket](https://kenney.nl/assets/mini-characters) übernommen. Die Vorschaubilder liegen unter `public/assets/kenney/characters/previews/`.
 
-Die Mini-Dungeon-Steinblöcke markieren unzerstörbare Felder. Holzgerüste und Fässer sind zerstörbar; die Truhe verdeckt das Portal. Das Holzgerüst erhält einen einfachen Füllkörper, damit seine Kollisionsfläche aus der Spielkamera erkennbar ist.
+Die Mini-Arena-Mauerblöcke markieren unzerstörbare Felder. Holzgerüste und Fässer sind zerstörbar; die Truhe verdeckt das Portal. Das Holzgerüst erhält einen einfachen Füllkörper, damit seine Kollisionsfläche aus der Spielkamera erkennbar ist. Bomben, Upgrades und Explosionen werden als animierte Three.js-Objekte gerendert.
 
-`Mini Arena` bietet einen beigen Steinblock, der sich farblich kaum von zerstörbaren Objekten abhebt. Die hohen Wände des [Modular Dungeon Kit](https://kenney.nl/assets/modular-dungeon-kit) würden die ein Feld breiten Wege aus der festen Kameraperspektive verdecken. [Tiny Dungeon](https://kenney.nl/assets/tiny-dungeon) enthält 2D-Pixelgrafik und passt nicht zu den 3D-Hindernissen.
+Der beige Block aus `Mini Arena` hebt sich farblich kaum von zerstörbaren Objekten ab; deshalb nutzt das Spiel dessen gemauerte Wandform in Türkis. Die hohen Wände des [Modular Dungeon Kit](https://kenney.nl/assets/modular-dungeon-kit) würden die ein Feld breiten Wege aus der festen Kameraperspektive verdecken. [Tiny Dungeon](https://kenney.nl/assets/tiny-dungeon) enthält 2D-Pixelgrafik und passt nicht zu den 3D-Hindernissen.

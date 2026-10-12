@@ -16,6 +16,7 @@
 .character-option:hover{background:#334a6c;transform:translateY(-2px)}
 .character-option[aria-pressed="true"]{border-color:#72edd8;background:#305967;box-shadow:0 0 0 2px #72edd837,inset 0 1px #ffffff2a;color:#fff}
 .character-option img{display:block;width:52px;height:52px;object-fit:contain;image-rendering:pixelated}
+.shield-hud{color:#83c9ff;text-shadow:0 0 9px #5aa9ff}
 @media(max-width:760px){.stage{height:clamp(400px,56vh,480px)}#intro .intro-card{padding:14px 18px}.intro-icon{display:none}#intro .intro-card h1{font-size:44px}.intro-copy{margin:8px auto 12px;line-height:1.35}.character-picker{margin-bottom:12px}.character-picker legend{font-size:12px;margin-bottom:6px}.character-options{gap:5px}.character-option{min-height:58px;padding:3px;gap:2px;flex-direction:column;font-size:13px}.character-option img{width:39px;height:39px}.quick-controls{margin-top:9px}.primary-button{min-height:48px}}
 @media(max-width:390px){.stage{height:400px;min-height:0}#intro{padding:8px}#intro .intro-card{padding:12px}#intro .intro-card h1{font-size:39px}.intro-copy{font-size:11px;margin:7px auto 9px}.character-option{min-height:54px}.character-option img{width:35px;height:35px}.quick-controls{font-size:9px}}
 
