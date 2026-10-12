@@ -3,11 +3,18 @@ export const HEIGHT = 11;
 export const PLAYER_SPEED = 3.1; // tiles per second
 export const ENEMY_SPEED = 1.45;
 export const BOMB_FUSE = 2.8;
+export type Difficulty = 'training' | 'easy' | 'medium' | 'hard';
+const difficultySettings: Record<Difficulty, { speed: number; focus: number; cooldown: number; range: number }> = {
+  training: { speed: 0, focus: 0, cooldown: Infinity, range: 0 },
+  easy: { speed: 0.95, focus: 0.35, cooldown: 6, range: 1 },
+  medium: { speed: ENEMY_SPEED, focus: 0.7, cooldown: 4, range: 1 },
+  hard: { speed: 1.75, focus: 0.95, cooldown: 2.7, range: 2 },
+};
 export type Tile = 0 | 1 | 2; // floor, stone, crate
 export type Direction = 'up' | 'down' | 'left' | 'right';
 export type Point = { x: number; y: number };
-export type Bomb = Point & { fuse: number; range: number; ownerPass: boolean; id: number };
-export type Enemy = Point & { id: number; targetX: number; targetY: number; moveTimer: number; alive: boolean; facing: Direction };
+export type Bomb = Point & { fuse: number; range: number; ownerPass: boolean; id: number; owner?: number };
+export type Enemy = Point & { id: number; targetX: number; targetY: number; moveTimer: number; bombCooldown: number; escapePath: Point[]; alive: boolean; facing: Direction };
 export type UpgradeType = 'range' | 'capacity' | 'shield';
 export type BlastKind = 'normal' | 'powered' | 'chain';
 export type BlastCell = Point & { distance: number; direction: Direction | null };
@@ -36,7 +43,8 @@ export class Game {
   enemies: Enemy[] = [];
   upgrades: Upgrade[] = [];
   events: GameEvent[] = [];
-  player = { x: 1, y: 1, lives: 3, shield: 0, invincible: 0, range: 2, capacity: 1, facing: 'down' as Direction };
+  player = { x: 1, y: 1, lives: 3, shield: 0, invincible: 0, range: 1, capacity: 1, facing: 'down' as Direction };
+  difficulty: Difficulty = 'easy';
   portal: Point = { x: 9, y: 7 };
   status: 'ready' | 'running' | 'paused' | 'won' | 'lost' = 'ready';
   elapsed = 0;
@@ -44,7 +52,7 @@ export class Game {
   private bombId = 0;
   private enemyId = 0;
 
-  constructor(seed = Date.now()) { this.reset(seed); }
+  constructor(seed = Date.now(), difficulty: Difficulty = 'easy') { this.difficulty=difficulty; this.reset(seed); }
   private rand() { this.randomState = (Math.imul(this.randomState, 1664525) + 1013904223) >>> 0; return this.randomState / 4294967296; }
   static key(x: number, y: number) { return `${x},${y}`; }
   inBounds(x: number, y: number) { return x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT; }
@@ -59,11 +67,12 @@ export class Game {
     for (const [x,y] of safe) this.tiles[y][x] = 0;
     this.tiles[this.portal.y][this.portal.x] = 2;
     this.fire.clear(); this.fireKinds.clear(); this.bombs = []; this.upgrades = []; this.events = [];
-    this.player = { x: 1, y: 1, lives: 3, shield: 0, invincible: 0, range: 2, capacity: 1, facing: 'down' };
-    this.enemies = [{x:11,y:1},{x:1,y:9},{x:11,y:9}].map(p => ({ ...p, targetX:p.x, targetY:p.y, id: ++this.enemyId, moveTimer: 0.45 + this.rand() * 0.2, alive: true, facing: 'down' as Direction }));
+    this.player = { x: 1, y: 1, lives: 3, shield: 0, invincible: 0, range: 1, capacity: 1, facing: 'down' };
+    this.enemies = [{x:11,y:1},{x:1,y:9},{x:11,y:9}].map(p => ({ ...p, targetX:p.x, targetY:p.y, id: ++this.enemyId, moveTimer: 0.45 + this.rand() * 0.2, bombCooldown: 1.8 + this.rand() * 1.4, escapePath: [], alive: true, facing: 'down' as Direction }));
     this.status = 'ready'; this.elapsed = 0;
   }
   start() { if (this.status === 'ready') this.status = 'running'; }
+  setDifficulty(difficulty: Difficulty) { if (this.status === 'ready') this.difficulty=difficulty; }
   togglePause() { if (this.status === 'running') this.status = 'paused'; else if (this.status === 'paused') this.status = 'running'; }
   canEnemyEnter(x: number, y: number) {
     if (this.tile(x,y) !== 0) return false;
@@ -95,7 +104,7 @@ export class Game {
     return true;
   }
   placeBomb() {
-    if (this.status !== 'running' || this.bombs.length >= this.player.capacity) return false;
+    if (this.status !== 'running' || this.playerBombCount >= this.player.capacity) return false;
     const x = Math.round(this.player.x), y = Math.round(this.player.y);
     if (this.tile(x,y) !== 0) return false;
     if (this.bombs.some(b => b.x === x && b.y === y)) return false;
@@ -112,9 +121,11 @@ export class Game {
     for (const bomb of exploding) this.explode(bomb);
     for (const enemy of this.enemies) {
       if (!enemy.alive) continue;
+      if (this.difficulty === 'training') continue;
+      enemy.bombCooldown=Math.max(0,enemy.bombCooldown-dt);
       const remaining = Math.hypot(enemy.targetX-enemy.x,enemy.targetY-enemy.y);
       if (remaining > 0) {
-        const step = Math.min(remaining,ENEMY_SPEED*dt);
+        const step = Math.min(remaining,difficultySettings[this.difficulty].speed*dt);
         enemy.x += (enemy.targetX-enemy.x)/remaining*step;
         enemy.y += (enemy.targetY-enemy.y)/remaining*step;
         if (step === remaining) { enemy.x=enemy.targetX; enemy.y=enemy.targetY; }
@@ -128,12 +139,76 @@ export class Game {
     }
     this.checkHazards(); this.checkWin();
   }
+  private blastFootprint(x: number, y: number, range: number) {
+    const cells = new Set<string>([Game.key(x,y)]);
+    for (const dir of directionList) {
+      const d=dirs[dir];
+      for (let step=1;step<=range;step++) {
+        const bx=x+d.x*step,by=y+d.y*step,tile=this.tile(bx,by);
+        if (tile===1) break;
+        cells.add(Game.key(bx,by));
+        if (tile===2) break;
+      }
+    }
+    return cells;
+  }
+  private escapeRoute(enemy: Enemy, range: number | null) {
+    const x=Math.round(enemy.x),y=Math.round(enemy.y);
+    const danger=range===null?new Set<string>():this.blastFootprint(x,y,range);
+    for (const bomb of this.bombs) for (const cell of this.blastFootprint(bomb.x,bomb.y,bomb.range)) danger.add(cell);
+    const nearestFuse=range===null?Math.min(...this.bombs.filter(b=>this.blastFootprint(b.x,b.y,b.range).has(Game.key(x,y))).map(b=>b.fuse)):BOMB_FUSE;
+    const maxSteps=Math.max(1,Math.floor((nearestFuse-0.35)*difficultySettings[this.difficulty].speed));
+    const queue:{x:number;y:number;path:Point[]}[]=[{x,y,path:[]}];
+    const visited=new Set<string>([Game.key(x,y)]);
+    for (let i=0;i<queue.length;i++) {
+      const item=queue[i];
+      if(item.path.length && !danger.has(Game.key(item.x,item.y)) && !this.fire.has(Game.key(item.x,item.y))) return item.path;
+      if(item.path.length>=maxSteps) continue;
+      for(const dir of directionList){
+        const d=dirs[dir],nx=item.x+d.x,ny=item.y+d.y,key=Game.key(nx,ny);
+        if(visited.has(key)||this.tile(nx,ny)!==0||this.bombs.some(b=>b.x===nx&&b.y===ny)||this.fire.has(key))continue;
+        visited.add(key);queue.push({x:nx,y:ny,path:[...item.path,{x:nx,y:ny}]});
+      }
+    }
+    return null;
+  }
+  private tryPlaceEnemyBomb(enemy: Enemy) {
+    const profile=difficultySettings[this.difficulty];
+    if(enemy.bombCooldown>0||this.bombs.some(b=>b.owner===enemy.id))return false;
+    const x=Math.round(enemy.x),y=Math.round(enemy.y);
+    if(this.tile(x,y)!==0||this.bombs.some(b=>b.x===x&&b.y===y)||this.fire.has(Game.key(x,y)))return false;
+    const blast=this.blastFootprint(x,y,profile.range);
+    const nearCrate=directionList.some(dir=>{const d=dirs[dir];return this.tile(x+d.x,y+d.y)===2;});
+    const canHitPlayer=[...blast].some(key=>{const [bx,by]=key.split(',').map(Number);return circleTouchesSquare(this.player.x,this.player.y,PLAYER_RADIUS,bx,by,0.44);});
+    if(!nearCrate&&!canHitPlayer)return false;
+    const route=this.escapeRoute(enemy,profile.range);
+    if(!route)return false;
+    this.bombs.push({x,y,fuse:BOMB_FUSE,range:profile.range,ownerPass:false,id:++this.bombId,owner:enemy.id});
+    this.events.push({type:'bomb',x,y});
+    enemy.bombCooldown=profile.cooldown;
+    enemy.escapePath=route;
+    return true;
+  }
   private moveEnemy(enemy: Enemy) {
+    const current=Game.key(Math.round(enemy.x),Math.round(enemy.y));
+    if(!enemy.escapePath.length&&this.bombs.some(b=>this.blastFootprint(b.x,b.y,b.range).has(current)))
+      enemy.escapePath=this.escapeRoute(enemy,null)??[];
+    if(enemy.escapePath.length||this.tryPlaceEnemyBomb(enemy)){
+      const next=enemy.escapePath.shift();
+      if(next&&this.canEnemyEnter(next.x,next.y)){
+        enemy.facing=next.x>enemy.x?'right':next.x<enemy.x?'left':next.y>enemy.y?'down':'up';
+        enemy.targetX=next.x;enemy.targetY=next.y;return;
+      }
+      enemy.escapePath=[];
+    }
     const choices = directionList.filter(dir => { const d=dirs[dir], x=enemy.x+d.x, y=enemy.y+d.y; return this.canEnemyEnter(x,y) && !this.fire.has(Game.key(x,y)); });
     if (!choices.length) return;
-    const direct = choices.map(dir => { const d=dirs[dir], x=enemy.x+d.x, y=enemy.y+d.y; return {dir, score: Math.abs(x-this.player.x)+Math.abs(y-this.player.y)+this.rand()*3}; });
+    const safe=choices.filter(dir=>{const d=dirs[dir],x=Math.round(enemy.x)+d.x,y=Math.round(enemy.y)+d.y;return !this.bombs.some(b=>this.blastFootprint(b.x,b.y,b.range).has(Game.key(x,y)));});
+    if(!safe.length&&!this.bombs.some(b=>this.blastFootprint(b.x,b.y,b.range).has(current)))return;
+    const available=safe.length?safe:choices;
+    const direct = available.map(dir => { const d=dirs[dir], x=enemy.x+d.x, y=enemy.y+d.y; return {dir, score: Math.abs(x-this.player.x)+Math.abs(y-this.player.y)+this.rand()*3}; });
     direct.sort((a,b)=>a.score-b.score);
-    const chosen = this.rand() < 0.75 ? direct[0].dir : choices[Math.floor(this.rand()*choices.length)];
+    const chosen = this.rand() < difficultySettings[this.difficulty].focus ? direct[0].dir : available[Math.floor(this.rand()*available.length)];
     enemy.targetX = enemy.x + dirs[chosen].x; enemy.targetY = enemy.y + dirs[chosen].y; enemy.facing = chosen;
   }
   private explode(bomb: Bomb, chained = false) {
@@ -185,7 +260,7 @@ export class Game {
       enemy.alive=false; this.events.push({type:'enemy',x:Math.round(enemy.x),y:Math.round(enemy.y)});
     }
     const inFire = fireCells.some(([x,y])=>circleTouchesSquare(this.player.x,this.player.y,PLAYER_RADIUS,x,y,0.44));
-    const dangerous = inFire || this.enemies.some(e=>e.alive && Math.hypot(e.x-this.player.x,e.y-this.player.y)<PLAYER_RADIUS*2);
+    const dangerous = inFire || (this.difficulty!=='training' && this.enemies.some(e=>e.alive && Math.hypot(e.x-this.player.x,e.y-this.player.y)<PLAYER_RADIUS*2));
     if (dangerous && this.player.invincible<=0) {
       if (this.player.shield>0) {
         this.player.shield=0; this.player.invincible=0.8;
@@ -201,4 +276,5 @@ export class Game {
   }
   drainEvents() { return this.events.splice(0); }
   get aliveEnemies() { return this.enemies.filter(e=>e.alive).length; }
+  get playerBombCount() { return this.bombs.filter(b=>b.owner===undefined).length; }
 }

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
-import { Game, WIDTH, HEIGHT, BOMB_FUSE, type BlastKind, type BlastCell, type Direction, type Point, type UpgradeType } from './logic';
+import { Game, WIDTH, HEIGHT, BOMB_FUSE, type BlastKind, type BlastCell, type Difficulty, type Direction, type Point, type UpgradeType } from './logic';
 import { makeBlastFlame, makeBlastCore } from './blastArt';
 import './style.css';
 
@@ -12,6 +12,14 @@ const intro = document.querySelector<HTMLElement>('#intro')!;
 const result = document.querySelector<HTMLElement>('#result')!;
 const toast = document.querySelector<HTMLElement>('#toast')!;
 const characterOptions = document.querySelector<HTMLElement>('#character-options')!;
+const difficultyOptions = document.querySelector<HTMLElement>('.difficulty-options')!;
+const difficultyHint = document.querySelector<HTMLElement>('#difficulty-hint')!;
+const difficultyDescriptions:Record<Difficulty,string>={
+  training:'Bots bleiben stehen und greifen nicht an.',
+  easy:'Langsame Bots, wenige Bomben.',
+  medium:'Aktive Bots, häufiger Bomben.',
+  hard:'Schnelle Bots mit stärkeren Bomben.',
+};
 const characters = [
   {id:'character-female-a',name:'Lina'},
   {id:'character-female-b',name:'Mira'},
@@ -22,12 +30,16 @@ const characters = [
 ] as const;
 type CharacterId = typeof characters[number]['id'];
 const characterStorageKey = 'blastbound-character';
+const difficultyStorageKey = 'blastbound-difficulty';
 let selectedCharacter:CharacterId = 'character-female-b';
+let selectedDifficulty:Difficulty = 'easy';
 try {
   const saved = localStorage.getItem(characterStorageKey);
   if(characters.some(character=>character.id===saved))selectedCharacter=saved as CharacterId;
+  const savedDifficulty=localStorage.getItem(difficultyStorageKey);
+  if(savedDifficulty&&Object.hasOwn(difficultyDescriptions,savedDifficulty))selectedDifficulty=savedDifficulty as Difficulty;
 } catch { /* Private browsing can disable storage. */ }
-const game = new Game();
+const game = new Game(Date.now(),selectedDifficulty);
 let renderer: THREE.WebGLRenderer;
 try { renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:false, powerPreference:'high-performance'}); }
 catch { stage.innerHTML='<div class="webgl-error">Dieses Spiel benötigt WebGL. Bitte aktiviere die Grafikhardware im Browser.</div>'; throw new Error('WebGL unavailable'); }
@@ -57,7 +69,7 @@ const floorEdge=mat('#263a58');
 const stone=mat('#347c98',0.68), stoneTop=mat('#62c9ca',0.5), stoneTrim=mat('#20526f');
 const wood=mat('#bf794f',0.72), woodTop=mat('#e29a64',0.7), woodTrim=mat('#81563f',0.78), woodNail=mat('#e7c88a',0.3,0.55);
 const bombMat=mat('#222b4c',0.22,0.25), bombCap=mat('#596582',0.4,0.3);
-const bombAccent={normal:mat('#ff9b59',0.26,0.25),powered:mat('#6eeff2',0.26,0.25)};
+const bombAccent={normal:mat('#ff9b59',0.26,0.25),powered:mat('#6eeff2',0.26,0.25),enemy:mat('#f36b83',0.26,0.25)};
 const glow = new THREE.MeshStandardMaterial({color:'#ffda6a',emissive:'#ff8e2e',emissiveIntensity:3,roughness:0.25});
 const blastPalette:Record<BlastKind,{edge:string;core:string;spark:string}>={
   normal:{edge:'#ff773c',core:'#ffe08b',spark:'#ffd064'},
@@ -153,9 +165,9 @@ function character(primary:string,accent:string,evil=false){
   g.scale.setScalar(1.36);
   return g;
 }
-function bombObject(range:number){
+function bombObject(range:number,enemyOwned=false){
   const g=new THREE.Group();
-  const charged=range>2,accent=bombAccent[charged?'powered':'normal'];
+  const charged=range>2,accent=bombAccent[enemyOwned?'enemy':charged?'powered':'normal'];
   const base=mesh(new THREE.CylinderGeometry(0.36,0.36,0.065,12),bombCap);base.position.y=0.055;g.add(base);
   const body=mesh(new THREE.SphereGeometry(0.33,20,14),bombMat);body.position.y=0.37;g.add(body);
   const band=mesh(new THREE.TorusGeometry(0.3,0.043,8,24),accent);band.rotation.x=Math.PI/2;band.position.y=0.37;g.add(band);
@@ -164,11 +176,11 @@ function bombObject(range:number){
   const fuse=mesh(new THREE.CylinderGeometry(0.045,0.06,0.15,8),accent);fuse.position.y=0.79;g.add(fuse);
   const led=mesh(new THREE.SphereGeometry(0.1,12,8),accent,false);led.position.y=0.89;g.add(led);
   const halo=mesh(new THREE.TorusGeometry(0.41,0.025,6,24),accent,false);halo.rotation.x=Math.PI/2;halo.position.y=0.08;g.add(halo);
-  const warningRing=mesh(new THREE.RingGeometry(0.38,0.5,28),new THREE.MeshBasicMaterial({color:charged?'#65e8f5':'#ff9a4b',transparent:true,opacity:0,depthWrite:false,side:THREE.DoubleSide}),false);
+  const warningRing=mesh(new THREE.RingGeometry(0.38,0.5,28),new THREE.MeshBasicMaterial({color:enemyOwned?'#f36b83':charged?'#65e8f5':'#ff9a4b',transparent:true,opacity:0,depthWrite:false,side:THREE.DoubleSide}),false);
   warningRing.rotation.x=-Math.PI/2;warningRing.position.y=0.025;g.add(warningRing);
-  const fuseSpark=new THREE.Sprite(fxMaterial(fxTextures.flame,charged?'#a9faff':'#ffe293',0));
+  const fuseSpark=new THREE.Sprite(fxMaterial(fxTextures.flame,enemyOwned?'#ffb3bc':charged?'#a9faff':'#ffe293',0));
   fuseSpark.position.y=0.97;fuseSpark.scale.set(0.25,0.32,1);g.add(fuseSpark);
-  const point=new THREE.PointLight(charged?'#6eeff2':'#ff9439',0.8,2.1);point.position.y=0.83;g.add(point);
+  const point=new THREE.PointLight(enemyOwned?'#f36b83':charged?'#6eeff2':'#ff9439',0.8,2.1);point.position.y=0.83;g.add(point);
   g.userData={led,halo,warningRing,fuseSpark,point};
   return g;
 }
@@ -492,6 +504,21 @@ function renderCharacterOptions(){
     characterOptions.append(button);
   }
 }
+function renderDifficultyOptions(){
+  for(const button of difficultyOptions.querySelectorAll<HTMLButtonElement>('[data-difficulty]')){
+    const difficulty=button.dataset.difficulty as Difficulty;
+    button.setAttribute('aria-pressed',String(difficulty===selectedDifficulty));
+    button.addEventListener('click',()=>{
+      selectedDifficulty=difficulty;
+      game.setDifficulty(difficulty);
+      difficultyHint.textContent=difficultyDescriptions[difficulty];
+      for(const option of difficultyOptions.querySelectorAll<HTMLButtonElement>('[data-difficulty]'))
+        option.setAttribute('aria-pressed',String(option.dataset.difficulty===difficulty));
+      try {localStorage.setItem(difficultyStorageKey,difficulty);} catch { /* Selection still works for this visit. */ }
+    });
+  }
+  difficultyHint.textContent=difficultyDescriptions[selectedDifficulty];
+}
 function loadKenneyAssets(){
   loadPlayerArt();
   assetLoader.load('/assets/kenney/arena/character-soldier.glb',gltf=>{
@@ -533,7 +560,7 @@ function syncDynamic(){
   }
   for(const bomb of game.bombs){
     let obj=bombObjects.get(bomb.id);
-    if(!obj){obj=bombObject(bomb.range);obj.position.copy(world(bomb));props.add(obj);bombObjects.set(bomb.id,obj);}
+    if(!obj){obj=bombObject(bomb.range,bomb.owner!==undefined);obj.position.copy(world(bomb));props.add(obj);bombObjects.set(bomb.id,obj);}
     const age=BOMB_FUSE-bomb.fuse;
     const landing=Math.max(0,1-age/0.13);
     const warning=Math.max(0,Math.min(1,(0.72-bomb.fuse)/0.72));
@@ -667,7 +694,7 @@ function updateHud(){
   lives.innerHTML=Array.from({length:3},(_,i)=>i<game.player.lives?'♥':'♡').join(' ')+(game.player.shield?' <span class="shield-hud">✦</span>':'');
   lives.setAttribute('aria-label',`${game.player.lives} Leben${game.player.shield?', Schild aktiv':''}`);
   document.querySelector('#enemies')!.textContent=String(game.aliveEnemies).padStart(2,'0');
-  document.querySelector('#bombs')!.textContent=`${game.player.capacity-game.bombs.length} / ${game.player.capacity}`;
+  document.querySelector('#bombs')!.textContent=`${game.player.capacity-game.playerBombCount} / ${game.player.capacity}`;
   const seconds=Math.floor(game.elapsed);document.querySelector('#timer')!.textContent=`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;
   const pause=document.querySelector<HTMLButtonElement>('#pause-button')!;pause.innerHTML=game.status==='paused'?'▶ <span>WEITER</span>':'Ⅱ <span>PAUSE</span>';
 }
@@ -682,8 +709,13 @@ function start(restart=false){
   if(restart){clearObjects();game.reset();playerObject.position.copy(world(game.player));syncStatic();}
   game.start();stage.classList.add('game-active');intro.classList.add('hidden');result.classList.add('hidden');updateHud();
 }
+function returnToMenu(){
+  clearObjects();game.reset();playerObject.position.copy(world(game.player));syncStatic();
+  stage.classList.remove('game-active');result.classList.add('hidden');intro.classList.remove('hidden');updateHud();
+}
 document.querySelector('#start-button')!.addEventListener('click',()=>start());
 document.querySelector('#restart-button')!.addEventListener('click',()=>start(true));
+document.querySelector('#menu-button')!.addEventListener('click',returnToMenu);
 document.querySelector('#pause-button')!.addEventListener('click',()=>{game.togglePause();showToast(game.status==='paused'?'PAUSIERT':'WEITER GEHT’S');updateHud();});
 const keyMap:Record<string,Direction>={ArrowUp:'up',KeyW:'up',ArrowDown:'down',KeyS:'down',ArrowLeft:'left',KeyA:'left',ArrowRight:'right',KeyD:'right'};
 const heldKeys=new Set<string>();
@@ -804,4 +836,4 @@ function frame(now:number){
   if(cameraJolt>0){camera.position.x+=Math.sin(now*0.071)*cameraJolt;camera.position.z+=Math.sin(now*0.096)*cameraJolt*0.6;}
   if(game.status==='running'){playerArt?.mixer.update(dt);for(const art of enemyArt.values())art.mixer.update(dt);}updateHud();renderer.render(scene,camera);
 }
-playerObject.position.copy(world(game.player));syncStatic();renderCharacterOptions();loadKenneyAssets();void loadDungeonAssets();updateHud();requestAnimationFrame(frame);
+playerObject.position.copy(world(game.player));syncStatic();renderCharacterOptions();renderDifficultyOptions();loadKenneyAssets();void loadDungeonAssets();updateHud();requestAnimationFrame(frame);

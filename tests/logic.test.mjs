@@ -58,7 +58,7 @@ test('a partial overlap with fire can hurt the player', () => {
 });
 
 test('enemies travel continuously and more slowly than the player', () => {
-  const game = new Game(2); game.start();
+  const game = new Game(2,'medium'); game.start();
   for (const row of game.tiles) row.fill(0);
   const enemy=game.enemies[0]; enemy.x=5; enemy.y=5; enemy.targetX=5; enemy.targetY=5; enemy.moveTimer=0;
   game.enemies.slice(1).forEach(other=>other.alive=false);
@@ -69,6 +69,52 @@ test('enemies travel continuously and more slowly than the player', () => {
   const traveled=Math.hypot(enemy.x-5,enemy.y-5);
   assert.ok(Math.abs(traveled-ENEMY_SPEED*0.1)<1e-9);
   assert.ok(ENEMY_SPEED<PLAYER_SPEED);
+});
+
+test('training bots stand still and never place bombs', () => {
+  const game = new Game(6,'training'); game.start();
+  const initial=game.enemies.map(enemy=>({x:enemy.x,y:enemy.y}));
+  for(let i=0;i<100;i++)game.update(0.1);
+  assert.deepEqual(game.enemies.map(enemy=>({x:enemy.x,y:enemy.y})),initial);
+  assert.equal(game.bombs.length,0);
+  game.player.x=game.enemies[0].x;game.player.y=game.enemies[0].y;
+  game.update(0.1);
+  assert.equal(game.player.lives,3);
+});
+
+test('active bots place bombs, plan an escape, and do not use player capacity', () => {
+  for(const [difficulty,range] of [['easy',1],['medium',1],['hard',2]]){
+    const game=new Game(7,difficulty); game.start();
+    for(const row of game.tiles)row.fill(0);
+    game.tiles[5][6]=2;
+    game.enemies.slice(1).forEach(enemy=>enemy.alive=false);
+    const enemy=game.enemies[0];
+    Object.assign(enemy,{x:5,y:5,targetX:5,targetY:5,moveTimer:0,bombCooldown:0});
+    game.player.x=10;game.player.y=9;
+    game.update(0.01);
+    assert.equal(game.bombs.length,1,difficulty);
+    assert.equal(game.bombs[0].owner,enemy.id,difficulty);
+    assert.equal(game.bombs[0].range,range,difficulty);
+    assert.equal(game.playerBombCount,0,difficulty);
+    assert.ok(enemy.escapePath.length>0||enemy.targetX!==enemy.x||enemy.targetY!==enemy.y,difficulty);
+    assert.equal(game.placeBomb(),true,difficulty);
+    assert.equal(game.playerBombCount,1,difficulty);
+  }
+});
+
+test('a bot follows its escape route before its own bomb detonates', () => {
+  const game=new Game(8,'hard');game.start();
+  for(const row of game.tiles)row.fill(0);
+  game.tiles[5][6]=2;
+  game.enemies.slice(1).forEach(enemy=>enemy.alive=false);
+  const enemy=game.enemies[0];
+  Object.assign(enemy,{x:5,y:5,targetX:5,targetY:5,moveTimer:0,bombCooldown:0});
+  game.player.x=10;game.player.y=9;
+  game.update(0.01);
+  assert.equal(game.bombs[0].owner,enemy.id);
+  for(let i=0;i<29;i++)game.update(0.1);
+  assert.equal(enemy.alive,true);
+  assert.equal(game.bombs.length,0);
 });
 
 test('stone and crates stop a cross explosion; the first crate is destroyed', () => {
@@ -107,11 +153,11 @@ test('range and capacity pickups alter bombs, while a shield absorbs one hit', (
   game.enemies.forEach(enemy=>enemy.alive=false);
   game.upgrades.push({x:1,y:1,type:'range'},{x:1,y:1,type:'capacity'},{x:1,y:1,type:'shield'});
   for (let i=0;i<3;i++) game.move(1,0,1/60,'right');
-  assert.equal(game.player.range,3);
+  assert.equal(game.player.range,2);
   assert.equal(game.player.capacity,2);
   assert.equal(game.player.shield,1);
   assert.equal(game.placeBomb(),true);
-  assert.equal(game.bombs[0].range,3);
+  assert.equal(game.bombs[0].range,2);
   game.fire.set('1,1',2);
   game.update(0.01);
   assert.equal(game.player.lives,3);

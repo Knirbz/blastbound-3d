@@ -34,12 +34,22 @@
                   <legend>WÄHLE DEINE FIGUR</legend>
                   <div id="character-options" class="character-options"></div>
                 </fieldset>
+                <fieldset class="difficulty-picker">
+                  <legend>BOT-SCHWIERIGKEIT</legend>
+                  <div class="difficulty-options" role="group" aria-label="Bot-Schwierigkeit">
+                    <button type="button" data-difficulty="training">TRAINING</button>
+                    <button type="button" data-difficulty="easy">LEICHT</button>
+                    <button type="button" data-difficulty="medium">MITTEL</button>
+                    <button type="button" data-difficulty="hard">SCHWER</button>
+                  </div>
+                  <p id="difficulty-hint" class="difficulty-hint" aria-live="polite"></p>
+                </fieldset>
                 <button id="start-button" class="primary-button" type="button">SPIEL STARTEN <span>→</span></button>
                 <p class="quick-controls">WASD / Pfeiltasten bewegen · Leertaste legt Bombe</p>
               </div>
             </div>
             <div id="result" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="result-title">
-              <div class="intro-card result-card"><p id="result-kicker" class="overline"></p><h2 id="result-title"></h2><p id="result-copy" class="intro-copy"></p><button id="restart-button" class="primary-button" type="button">NOCH MAL SPIELEN <span>↻</span></button></div>
+              <div class="intro-card result-card"><p id="result-kicker" class="overline"></p><h2 id="result-title"></h2><p id="result-copy" class="intro-copy"></p><button id="restart-button" class="primary-button" type="button">NOCH MAL SPIELEN <span>↻</span></button><button id="menu-button" class="secondary-button" type="button">FIGUR / MODUS ÄNDERN</button></div>
             </div>
             <div id="toast" class="toast hidden" role="status"></div>
           </div>
