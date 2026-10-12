@@ -55,10 +55,10 @@ Dafür ist eine lokale Cloudflare-Anmeldung mit `npx wrangler login` erforderlic
 
 ## 3D-Assets
 
-Die animierten Figuren stammen aus den vom Nutzer bereitgestellten Kenney-Archiven `kenney_mini-characters.zip` (Version 1.0) und `kenney_mini-arena.zip` (Version 1.1). Die verwendeten GLB-Dateien und ihre externen Farbtexturen liegen unverändert unter `public/assets/kenney/`; ihre jeweiligen CC0-Lizenzdateien liegen daneben. Im Spiel werden die Modelle nur einheitlich skaliert. Bei einem Ladefehler bleiben die ursprünglichen Three.js-Figuren als technische Rückfallebene nutzbar.
+Die animierten Figuren stammen aus den Kenney-Paketen `Mini Characters` und `Mini Arena`. Die festen Steinblöcke sowie die zerstörbaren Holzgerüste, Fässer und die Portaltruhe stammen aus dem [Kenney-Paket Mini Dungeon](https://kenney.nl/assets/mini-dungeon). Ihre GLB-Dateien und Farbtexturen liegen unter `public/assets/kenney/`; die jeweiligen CC0-Lizenzen liegen daneben. Die Modelle werden im Spiel skaliert. Bei einem Ladefehler bleiben die ursprünglichen Three.js-Formen als technische Rückfallebene nutzbar.
 
 Die sechs auswählbaren Figuren und ihre Vorschauen wurden aus dem [offiziellen Mini-Characters-Paket](https://kenney.nl/assets/mini-characters) übernommen. Die Vorschaubilder liegen unter `public/assets/kenney/characters/previews/`.
 
-Der beige Steinblock aus Mini Arena wurde im Spiel getestet, aber Kisten und unzerstörbare Mauern waren damit schwer zu unterscheiden. Die vorhandenen kontrastreichen Three.js-Mauern und Kisten bleiben vorerst im Einsatz, bis passende eigenständige 3D-Assets vorliegen.
+Die Mini-Dungeon-Steinblöcke markieren unzerstörbare Felder. Holzgerüste und Fässer sind zerstörbar; die Truhe verdeckt das Portal. Das Holzgerüst erhält einen einfachen Füllkörper, damit seine Kollisionsfläche aus der Spielkamera erkennbar ist.
 
-`kenney_modular-dungeon-kit_1.0.zip` wurde geprüft, aber seine hohen Korridorwände würden die ein Feld breiten Wege aus der festen Kameraperspektive verdecken. `kenney_tiny-dungeon.zip` enthält 2D-Pixelgrafik und wird daher nicht als Ersatz für 3D-Figuren verwendet.
+`Mini Arena` bietet einen beigen Steinblock, der sich farblich kaum von zerstörbaren Objekten abhebt. Die hohen Wände des [Modular Dungeon Kit](https://kenney.nl/assets/modular-dungeon-kit) würden die ein Feld breiten Wege aus der festen Kameraperspektive verdecken. [Tiny Dungeon](https://kenney.nl/assets/tiny-dungeon) enthält 2D-Pixelgrafik und passt nicht zu den 3D-Hindernissen.

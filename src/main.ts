@@ -202,6 +202,43 @@ function applyEnemyArt(group:THREE.Group,id:number){
   const art=makeAnimatedArt(enemyTemplate);group.clear();group.add(art.model);enemyArt.set(id,art);
 }
 const assetLoader=new GLTFLoader();
+type DungeonProp='wall'|'wood-structure'|'barrel'|'chest';
+const dungeonModels=new Map<DungeonProp,THREE.Object3D>();
+function prepareDungeonModel(gltf:GLTF,width:number,height:number){
+  const model=gltf.scene;
+  const bounds=new THREE.Box3().setFromObject(model);
+  const size=bounds.getSize(new THREE.Vector3());
+  const scale=Math.min(width/size.x,width/size.z,height/size.y);
+  model.scale.setScalar(scale);
+  model.position.set(-(bounds.min.x+bounds.max.x)*scale/2,-bounds.min.y*scale,-(bounds.min.z+bounds.max.z)*scale/2);
+  model.traverse(child=>{if(child instanceof THREE.Mesh){child.castShadow=true;child.receiveShadow=true;}});
+  return model;
+}
+async function loadDungeonAssets(){
+  const assets:[DungeonProp,number,number][]=[['wall',0.92,0.99],['wood-structure',0.89,0.82],['barrel',0.80,0.78],['chest',0.84,0.78]];
+  await Promise.all(assets.map(async ([name,width,height])=>{
+    try{
+      const gltf=await assetLoader.loadAsync(`/assets/kenney/dungeon/${name}.glb`);
+      dungeonModels.set(name,prepareDungeonModel(gltf,width,height));
+    }catch(error){console.warn(`Kenney ${name} asset unavailable`,error);}
+  }));
+  for(const obj of tileObjects.values())props.remove(obj);
+  tileObjects.clear();
+  syncStatic();
+}
+function tileModel(x:number,y:number,tile:1|2){
+  const name:DungeonProp=tile===1?'wall':x===game.portal.x&&y===game.portal.y?'chest':(x*7+y*11)%5===0?'barrel':'wood-structure';
+  const template=dungeonModels.get(name);
+  if(!template)return tile===1?stoneBlock():crate();
+  const model=template.clone(true);
+  const group=new THREE.Group();
+  group.add(model);
+  if(name!=='wood-structure')return group;
+  const core=rounded(0.66,0.58,0.66,0.035,wood);core.position.y=0.32;
+  const lid=rounded(0.7,0.08,0.7,0.02,woodTop);lid.position.y=0.64;
+  group.add(core,lid);
+  return group;
+}
 function loadPlayerArt(){
   const request=++playerLoadRequest;
   const base='/assets/kenney/';
@@ -251,7 +288,7 @@ function syncStatic(){
     const id=key(x,y),tile=game.tile(x,y),existing=tileObjects.get(id);
     if(tile===0){if(existing){props.remove(existing);tileObjects.delete(id);}continue;}
     if(existing)continue;
-    const obj=tile===1?stoneBlock():crate();obj.position.copy(world({x,y}));props.add(obj);tileObjects.set(id,obj);
+    const obj=tileModel(x,y,tile);obj.position.copy(world({x,y}));props.add(obj);tileObjects.set(id,obj);
   }
   if(game.tile(game.portal.x,game.portal.y)===0 && !portalObjectRef){portalObjectRef=portalObject();portalObjectRef.position.copy(world(game.portal));props.add(portalObjectRef);}
   if(game.tile(game.portal.x,game.portal.y)!==0 && portalObjectRef){props.remove(portalObjectRef);portalObjectRef=null;}
@@ -439,4 +476,4 @@ function frame(now:number){
   if(toastTimer>0){toastTimer-=dt;if(toastTimer<=0)toast.classList.add('hidden');}
   updateParticles(dt);syncDynamic();if(game.status==='running'){playerArt?.mixer.update(dt);for(const art of enemyArt.values())art.mixer.update(dt);}updateHud();renderer.render(scene,camera);
 }
-playerObject.position.copy(world(game.player));syncStatic();renderCharacterOptions();loadKenneyAssets();updateHud();requestAnimationFrame(frame);
+playerObject.position.copy(world(game.player));syncStatic();renderCharacterOptions();loadKenneyAssets();void loadDungeonAssets();updateHud();requestAnimationFrame(frame);
