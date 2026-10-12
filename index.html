@@ -24,6 +24,7 @@
           </div>
           <div id="stage" class="stage">
             <canvas id="game-canvas" aria-label="Blastbound 3D Spielfeld"></canvas>
+            <div id="active-items" class="active-items hidden" aria-label="Aktive Power-ups"></div>
             <div id="intro" class="overlay">
               <div class="intro-card">
                 <div class="intro-icon">✦</div>
@@ -45,7 +46,7 @@
                   <p id="difficulty-hint" class="difficulty-hint" aria-live="polite"></p>
                 </fieldset>
                 <button id="start-button" class="primary-button" type="button">SPIEL STARTEN <span>→</span></button>
-                <p class="quick-controls">WASD / Pfeiltasten bewegen · Leertaste legt Bombe</p>
+                <p class="quick-controls">WASD / Pfeiltasten bewegen · Leertaste Bombe · R Item-Aktion</p>
               </div>
             </div>
             <div id="pause-menu" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="pause-title">
@@ -68,8 +69,8 @@
           <div class="panel-header"><span class="panel-line"></span><span>SO SPIELST DU</span></div>
           <h2>Clevere Züge.<br /><em>Großer Knall.</em></h2>
           <p>Jede Bombe verändert das Labyrinth. Plane deinen Fluchtweg, bevor der Countdown abläuft.</p>
-          <div class="control-list"><div class="control-row"><span>BEWEGEN</span><div class="key-group"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><small>oder</small><kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd></div></div><div class="control-row"><span>BOMBE LEGEN</span><kbd class="space-key">LEERTASTE</kbd></div><div class="control-row"><span>PAUSE</span><kbd>P</kbd></div></div>
-          <div class="tip"><span class="tip-icon">✧</span><div><b>PRO-TIPP</b><p>Holz und Fässer können Upgrades verbergen: mehr Reichweite, zusätzliche Bomben oder einen Schutzschild. Feste Blöcke bleiben stehen.</p></div></div>
+          <div class="control-list"><div class="control-row"><span>BEWEGEN</span><div class="key-group"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><small>oder</small><kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd></div></div><div class="control-row"><span>BOMBE LEGEN</span><kbd class="space-key">LEERTASTE</kbd></div><div class="control-row"><span>ITEM-AKTION</span><kbd>R</kbd></div><div class="control-row"><span>PAUSE</span><kbd>P</kbd></div></div>
+          <div class="tip"><span class="tip-icon">✧</span><div><b>PRO-TIPP</b><p>Sprenge Holz und Fässer für klassische Power-ups. Mit R nutzt du Fernzünder, Handschuh oder Kick-Stopp.</p></div></div>
           <div class="mobile-controls" aria-label="Touch-Steuerung">
             <div id="touch-dpad" class="dpad" role="group" aria-label="Steuerkreuz: gedrückt halten und in die gewünschte Richtung ziehen">
               <button type="button" class="dpad-up" data-dir="up" aria-label="Nach oben">▲</button>
@@ -78,8 +79,9 @@
               <button type="button" class="dpad-right" data-dir="right" aria-label="Nach rechts">▶</button>
               <button type="button" class="dpad-down" data-dir="down" aria-label="Nach unten">▼</button>
             </div>
-            <button id="touch-bomb" class="touch-bomb" type="button" aria-label="Bombe legen">BOMBE<br />●</button>
+            <div class="touch-actions"><button id="touch-action" class="touch-action hidden" type="button" aria-label="Power-up-Aktion">AKTION</button><button id="touch-bomb" class="touch-bomb" type="button" aria-label="Bombe legen">BOMBE<br />●</button></div>
           </div>
+          <details class="item-guide"><summary>POWER-UPS ANSEHEN</summary><p>F+ Feuerkraft · B+ Bombenzahl · » Tempo · R Fernzünder · B↗ Bombenpass · □↗ Blockpass · G Handschuh · K Kick · ♥ Leben · F9 maximale Feuerkraft · P nächste Bombe maximal · X Superbombe durch Kisten · S Schleimbombe · ☠ Fluch · ◆ Schild</p></details>
         </aside>
       </main>
       <footer class="page-footer"><span>BLASTBOUND 3D © 2026</span><span>13 × 11 ARENA · THREE.JS</span></footer>

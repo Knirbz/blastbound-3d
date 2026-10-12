@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
-import { Game, WIDTH, HEIGHT, BOMB_FUSE, FIRE_DURATION, type BlastKind, type BlastCell, type Difficulty, type Direction, type Point, type UpgradeType } from './logic';
+import { Game, WIDTH, HEIGHT, BOMB_FUSE, FIRE_DURATION, type BlastKind, type BlastCell, type Bomb, type Difficulty, type Direction, type Point, type UpgradeType } from './logic';
 import './style.css';
 
 const stage = document.querySelector<HTMLElement>('#stage')!;
@@ -69,8 +69,10 @@ const floorMats=['#4b627f','#506783','#48607d','#4d6580'].map(color=>mat(color,0
 const floorEdge=mat('#263a58');
 const stone=mat('#347c98',0.68), stoneTop=mat('#62c9ca',0.5), stoneTrim=mat('#20526f');
 const wood=mat('#bf794f',0.72), woodTop=mat('#e29a64',0.7), woodTrim=mat('#81563f',0.78), woodNail=mat('#e7c88a',0.3,0.55);
-const bombMat=mat('#222b4c',0.22,0.25), bombCap=mat('#596582',0.4,0.3);
-const bombAccent={normal:mat('#ff9b59',0.26,0.25),powered:mat('#6eeff2',0.26,0.25),enemy:mat('#f36b83',0.26,0.25)};
+const bombMat=mat('#34415d',0.26,0.25), bombCap=mat('#8b9bb4',0.34,0.55);
+const bombHighlight=mat('#7188aa',0.18,0.25),bombCore=mat('#f8fcff',0.2),bombFuseMat=mat('#e4c993',0.88);
+const bombAccent={normal:mat('#ffb45e',0.26,0.25),powered:mat('#6eeff2',0.26,0.25),enemy:mat('#f36b83',0.26,0.25),remote:mat('#8a8cff',0.26,0.25),pierce:mat('#ff6262',0.26,0.25),slime:mat('#81ed78',0.26,0.25)};
+const bombColors={normal:'#ffb45e',powered:'#6eeff2',enemy:'#f36b83',remote:'#8a8cff',pierce:'#ff6262',slime:'#81ed78'};
 const glow = new THREE.MeshStandardMaterial({color:'#ffda6a',emissive:'#ff8e2e',emissiveIntensity:3,roughness:0.25});
 const blastPalette:Record<BlastKind,{edge:string;core:string;spark:string}>={
   normal:{edge:'#ff6b2c',core:'#fff1b5',spark:'#ffd064'},
@@ -86,11 +88,15 @@ const particleTexture=(name:string)=>{
 const fxTextures={fire:particleTexture('fire_01'),flame:particleTexture('flame_02'),smoke:particleTexture('smoke_05'),spark:particleTexture('spark_05'),scorch:particleTexture('scorch_01'),scratch:particleTexture('scratch_01'),dirt:particleTexture('dirt_02'),flare:particleTexture('flare_01')};
 const fxMaterial=(texture:THREE.Texture,color:string,opacity=1,additive=true)=>new THREE.SpriteMaterial({map:texture,color,transparent:true,opacity,blending:additive?THREE.AdditiveBlending:THREE.NormalBlending,depthWrite:false});
 const portalMat = new THREE.MeshStandardMaterial({color:'#76dfff',emissive:'#18baf0',emissiveIntensity:2.7,metalness:0.35,roughness:0.2});
-const upgradeMats:Record<UpgradeType,THREE.MeshStandardMaterial>={
-  range:new THREE.MeshStandardMaterial({color:'#ffae54',emissive:'#ff6828',emissiveIntensity:0.9,metalness:0.3,roughness:0.3}),
-  capacity:new THREE.MeshStandardMaterial({color:'#80ecdb',emissive:'#25bfa8',emissiveIntensity:0.9,metalness:0.3,roughness:0.3}),
-  shield:new THREE.MeshStandardMaterial({color:'#7eb7ff',emissive:'#4b83ef',emissiveIntensity:1.1,metalness:0.4,roughness:0.26}),
-};
+const upgradeColors:Record<UpgradeType,string>={range:'#ffae54',capacity:'#80ecdb',speed:'#f4da73',remote:'#a5a0ff',bombPass:'#c7a6f1',blockPass:'#a3d5ef',glove:'#f8bd80',kick:'#f49676',heart:'#ff7d9a',maxRange:'#ffdf69',powerBomb:'#f6a852',pierce:'#ff7070',slime:'#8be275',skull:'#bb9bd5',shield:'#7eb7ff'};
+const upgradeGlyphs:Record<UpgradeType,string>={range:'F+',capacity:'B+',speed:'»',remote:'R',bombPass:'B↗',blockPass:'□↗',glove:'G',kick:'K',heart:'♥',maxRange:'F9',powerBomb:'P',pierce:'X',slime:'S',skull:'☠',shield:'◆'};
+const upgradeMats=Object.fromEntries(Object.entries(upgradeColors).map(([type,color])=>[type,new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity:0.65,metalness:0.22,roughness:0.32})])) as Record<UpgradeType,THREE.MeshStandardMaterial>;
+const upgradeGlyphMats=Object.fromEntries(Object.entries(upgradeGlyphs).map(([type,glyph])=>{
+  const canvas=document.createElement('canvas');canvas.width=128;canvas.height=128;
+  const context=canvas.getContext('2d')!;context.textAlign='center';context.textBaseline='middle';context.font=glyph.length>1?'900 59px Arial':'900 84px Arial';context.lineWidth=9;context.strokeStyle='#173047';context.fillStyle='#ffffff';context.strokeText(glyph,64,66);context.fillText(glyph,64,66);
+  const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;
+  return [type,new THREE.SpriteMaterial({map:texture,transparent:true,depthWrite:false})];
+})) as Record<UpgradeType,THREE.SpriteMaterial>;
 const pickupBase=mat('#24334f');
 const mesh=(geometry:THREE.BufferGeometry, material:THREE.Material, shadow=true) => {const o=new THREE.Mesh(geometry,material); o.castShadow=shadow; o.receiveShadow=true; return o;};
 const rounded=(w:number,h:number,d:number,r:number,m:THREE.Material)=>mesh(new RoundedBoxGeometry(w,h,d,3,r),m);
@@ -152,23 +158,30 @@ function character(primary:string,accent:string,evil=false){
   g.scale.setScalar(1.36);
   return g;
 }
-function bombObject(range:number,enemyOwned=false){
+function bombVariant(bomb:Bomb){return bomb.owner!==undefined?'enemy':bomb.pierce?'pierce':bomb.slime?'slime':bomb.remote?'remote':bomb.range>2?'powered':'normal';}
+function bombObject(bomb:Bomb){
   const g=new THREE.Group();
-  const charged=range>2,accent=bombAccent[enemyOwned?'enemy':charged?'powered':'normal'];
-  const base=mesh(new THREE.CylinderGeometry(0.36,0.36,0.065,12),bombCap);base.position.y=0.055;g.add(base);
-  const body=mesh(new THREE.SphereGeometry(0.33,20,14),bombMat);body.position.y=0.37;g.add(body);
-  const band=mesh(new THREE.TorusGeometry(0.3,0.043,8,24),accent);band.rotation.x=Math.PI/2;band.position.y=0.37;g.add(band);
-  const stripe=mesh(new THREE.TorusGeometry(0.3,0.027,8,24),bombCap);stripe.position.y=0.37;g.add(stripe);
-  const cap=mesh(new THREE.CylinderGeometry(0.13,0.18,0.11,10),bombCap);cap.position.y=0.69;g.add(cap);
-  const fuse=mesh(new THREE.CylinderGeometry(0.045,0.06,0.15,8),accent);fuse.position.y=0.79;g.add(fuse);
-  const led=mesh(new THREE.SphereGeometry(0.1,12,8),accent,false);led.position.y=0.89;g.add(led);
-  const halo=mesh(new THREE.TorusGeometry(0.41,0.025,6,24),accent,false);halo.rotation.x=Math.PI/2;halo.position.y=0.08;g.add(halo);
-  const warningRing=mesh(new THREE.RingGeometry(0.38,0.5,28),new THREE.MeshBasicMaterial({color:enemyOwned?'#f36b83':charged?'#65e8f5':'#ff9a4b',transparent:true,opacity:0,depthWrite:false,side:THREE.DoubleSide}),false);
+  const variant=bombVariant(bomb);
+  const accent=bombAccent[variant],color=bombColors[variant];
+  const base=mesh(new THREE.CylinderGeometry(0.35,0.35,0.065,24),bombCap);base.position.y=0.045;g.add(base);
+  const body=mesh(new THREE.SphereGeometry(0.355,24,18),bombMat);body.position.y=0.39;g.add(body);
+  const highlight=mesh(new THREE.SphereGeometry(0.16,16,12),bombHighlight,false);highlight.scale.set(1,0.48,0.13);highlight.position.set(-0.13,0.55,0.31);g.add(highlight);
+  const lowerBand=mesh(new THREE.TorusGeometry(0.335,0.033,8,32),accent);lowerBand.rotation.x=Math.PI/2;lowerBand.position.y=0.29;g.add(lowerBand);
+  const upperBand=mesh(new THREE.TorusGeometry(0.335,0.018,8,32),bombCap);upperBand.rotation.x=Math.PI/2;upperBand.position.y=0.47;g.add(upperBand);
+  const face=mesh(new THREE.CircleGeometry(0.125,24),accent,false);face.position.set(0,0.39,0.352);g.add(face);
+  const core=mesh(new THREE.CircleGeometry(0.064,20),bombCore,false);core.position.set(0,0.39,0.355);g.add(core);
+  for(const x of [-0.19,0.19]){const rivet=mesh(new THREE.SphereGeometry(0.028,8,6),bombCap,false);rivet.position.set(x,0.39,0.306);g.add(rivet);}
+  const collar=mesh(new THREE.CylinderGeometry(0.155,0.2,0.13,16),bombCap);collar.position.y=0.72;g.add(collar);
+  const socket=mesh(new THREE.CylinderGeometry(0.09,0.105,0.04,16),accent);socket.position.y=0.81;g.add(socket);
+  const fuseCurve=new THREE.CatmullRomCurve3([new THREE.Vector3(0,0.82,0),new THREE.Vector3(0.03,0.9,0),new THREE.Vector3(0.11,0.97,0),new THREE.Vector3(0.15,1.06,0)]);
+  const fuse=mesh(new THREE.TubeGeometry(fuseCurve,14,0.039,7,false),bombFuseMat,false);g.add(fuse);
+  const halo=mesh(new THREE.TorusGeometry(0.41,0.022,6,28),accent,false);halo.rotation.x=Math.PI/2;halo.position.y=0.06;g.add(halo);
+  const warningRing=mesh(new THREE.RingGeometry(0.39,0.52,32),new THREE.MeshBasicMaterial({color,transparent:true,opacity:0,depthWrite:false,side:THREE.DoubleSide}),false);
   warningRing.rotation.x=-Math.PI/2;warningRing.position.y=0.025;g.add(warningRing);
-  const fuseSpark=new THREE.Sprite(fxMaterial(fxTextures.flame,enemyOwned?'#ffb3bc':charged?'#a9faff':'#ffe293',0));
-  fuseSpark.position.y=0.97;fuseSpark.scale.set(0.25,0.32,1);g.add(fuseSpark);
-  const point=new THREE.PointLight(enemyOwned?'#f36b83':charged?'#6eeff2':'#ff9439',0.8,2.1);point.position.y=0.83;g.add(point);
-  g.userData={led,halo,warningRing,fuseSpark,point};
+  const fuseSpark=new THREE.Sprite(fxMaterial(fxTextures.flame,'#ffe5a0',0.65));
+  fuseSpark.position.copy(fuseCurve.getPoint(1));fuseSpark.scale.set(0.19,0.23,1);g.add(fuseSpark);
+  const point=new THREE.PointLight(color,0.25,1.6);point.position.y=0.87;g.add(point);
+  g.userData={face,halo,warningRing,fuseSpark,fuseCurve,point,variant};
   return g;
 }
 function disposeBombObject(object:THREE.Object3D){
@@ -257,19 +270,9 @@ function upgradeObject(type:UpgradeType){
   const accent=upgradeMats[type];
   const base=mesh(new THREE.CylinderGeometry(0.27,0.31,0.08,8),pickupBase);base.position.y=0.05;g.add(base);
   const ring=mesh(new THREE.TorusGeometry(0.29,0.035,7,24),accent,false);ring.rotation.x=Math.PI/2;ring.position.y=0.12;g.add(ring);
-  const icon=new THREE.Group();icon.position.y=0.4;g.add(icon);
-  if(type==='range'){
-    const flame=mesh(new THREE.ConeGeometry(0.22,0.48,6),accent);flame.rotation.z=-0.2;icon.add(flame);
-    const ember=mesh(new THREE.OctahedronGeometry(0.11,0),glow,false);ember.position.set(0,0.02,0.18);icon.add(ember);
-  }else if(type==='capacity'){
-    const sphere=mesh(new THREE.SphereGeometry(0.2,14,10),bombMat);icon.add(sphere);
-    const fuse=mesh(new THREE.CylinderGeometry(0.055,0.075,0.1,8),accent);fuse.position.y=0.23;icon.add(fuse);
-    const crossA=rounded(0.29,0.07,0.045,0.01,accent);crossA.position.z=0.19;icon.add(crossA);
-    const crossB=rounded(0.07,0.29,0.045,0.01,accent);crossB.position.z=0.19;icon.add(crossB);
-  }else{
-    const gem=mesh(new THREE.IcosahedronGeometry(0.23,0),accent);gem.scale.set(1,1.18,0.65);icon.add(gem);
-    const orbit=mesh(new THREE.TorusGeometry(0.28,0.025,6,20),accent,false);orbit.rotation.x=Math.PI/2;icon.add(orbit);
-  }
+  const icon=new THREE.Group();icon.position.y=0.39;g.add(icon);
+  const disc=mesh(new THREE.CylinderGeometry(0.25,0.25,0.1,24),accent);disc.rotation.x=Math.PI/2;icon.add(disc);
+  const glyph=new THREE.Sprite(upgradeGlyphMats[type]);glyph.position.z=0.085;glyph.scale.set(0.43,0.43,1);icon.add(glyph);
   g.userData.icon=icon;
   return g;
 }
@@ -560,18 +563,19 @@ function syncDynamic(){
   }
   for(const bomb of game.bombs){
     let obj=bombObjects.get(bomb.id);
-    if(!obj){obj=bombObject(bomb.range,bomb.owner!==undefined);obj.position.copy(world(bomb));props.add(obj);bombObjects.set(bomb.id,obj);}
+    if(obj&&obj.userData.variant!==bombVariant(bomb)){props.remove(obj);disposeBombObject(obj);bombObjects.delete(bomb.id);obj=undefined;}
+    if(!obj){obj=bombObject(bomb);obj.position.copy(world(bomb));props.add(obj);bombObjects.set(bomb.id,obj);}
     const age=BOMB_FUSE-bomb.fuse;
     const landing=Math.max(0,1-age/0.13);
     const warning=Math.max(0,Math.min(1,(0.72-bomb.fuse)/0.72));
     const shake=Math.max(0,Math.min(1,(0.26-bomb.fuse)/0.26));
     const time=performance.now()/1000;
-    obj.position.y=landing*landing*0.13;
+    obj.position.copy(world(bomb));obj.position.y=landing*landing*0.13+(bomb.carried?0.65:0);
     obj.scale.set(1+landing*0.08+shake*0.026*Math.sin(time*55+bomb.id),1-landing*0.1,1+landing*0.08-shake*0.026*Math.sin(time*55+bomb.id));
     obj.rotation.z=shake*0.075*Math.sin(time*49+bomb.id);
     obj.rotation.x=shake*0.06*Math.sin(time*57+bomb.id*1.7);
-    const led=obj.userData.led as THREE.Mesh;
-    led.scale.setScalar(0.72+warning*0.28*Math.max(0,Math.sin(time*(10+warning*20))));
+    const face=obj.userData.face as THREE.Mesh;
+    face.scale.setScalar(0.94+warning*0.18*Math.max(0,Math.sin(time*(10+warning*20))));
     const halo=obj.userData.halo as THREE.Mesh;
     halo.visible=warning>0.02;
     halo.scale.setScalar(0.9+warning*0.25);
@@ -579,8 +583,10 @@ function syncDynamic(){
     (warningRing.material as THREE.MeshBasicMaterial).opacity=warning*0.72*(0.72+0.28*Math.sin(time*(10+warning*18)));
     warningRing.scale.setScalar(0.86+warning*0.24);
     const fuseSpark=obj.userData.fuseSpark as THREE.Sprite;
-    fuseSpark.material.opacity=warning*(0.45+0.45*Math.max(0,Math.sin(time*(12+warning*25))));
-    fuseSpark.scale.set(0.25+warning*0.23,0.32+warning*0.3,1);
+    const fuseProgress=bomb.remote?0.12:Math.max(0,Math.min(1,age/BOMB_FUSE));
+    fuseSpark.position.copy((obj.userData.fuseCurve as THREE.Curve<THREE.Vector3>).getPoint(1-fuseProgress*0.95));
+    fuseSpark.material.opacity=0.55+warning*0.45;
+    fuseSpark.scale.set(0.16+warning*0.2,0.2+warning*0.25,1);
     (obj.userData.point as THREE.PointLight).intensity=0.25+warning*(0.4+0.55*Math.max(0,Math.sin(time*(10+warning*20))));
     const tick=Math.floor((0.72-bomb.fuse)/0.18);
     if(warning>0&&tick>(obj.userData.lastTick??-1)){obj.userData.lastTick=tick;beep(450+tick*90,0.045,'triangle',0.012);}
@@ -702,6 +708,22 @@ function updateHud(){
   const seconds=Math.floor(game.elapsed);document.querySelector('#timer')!.textContent=`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;
   const pause=document.querySelector<HTMLButtonElement>('#pause-button')!;pause.innerHTML=game.status==='paused'?'▶ <span>WEITER</span>':'Ⅱ <span>PAUSE</span>';
   pause.setAttribute('aria-label',game.status==='paused'?'Spiel fortsetzen':'Spiel pausieren');
+  const active=document.querySelector<HTMLElement>('#active-items')!;
+  const labels:string[]=[];
+  if(game.player.speed)labels.push(`TEMPO ${game.player.speed}`);
+  if(game.player.remote)labels.push('FERNZÜNDER');
+  if(game.player.bombPass)labels.push('BOMBENPASS');
+  if(game.player.blockPass)labels.push('BLOCKPASS');
+  if(game.player.glove)labels.push('HANDSCHUH');
+  if(game.player.kick)labels.push('KICK');
+  if(game.player.pierce)labels.push('SUPERBOMBE');
+  if(game.player.slime)labels.push('SCHLEIMBOMBE');
+  if(game.player.powerBomb)labels.push('POWERBOMBE BEREIT');
+  if(game.player.curse>0)labels.push(`FLUCH: ${game.player.curseType==='slow'?'LANGSAM':game.player.curseType==='fast'?'ZU SCHNELL':game.player.curseType==='autoBomb'?'AUTO-BOMBEN':game.player.curseType==='noBomb'?'KEINE BOMBEN':'MINI-BOMBEN'}`);
+  active.textContent=labels.join(' · ');active.classList.toggle('hidden',labels.length===0);
+  const action=document.querySelector<HTMLButtonElement>('#touch-action')!;
+  action.classList.toggle('hidden',!game.player.remote&&!game.player.glove&&!game.player.kick);
+  action.textContent=game.carriedBombId!==null?'WERFEN':game.player.remote?'ZÜNDEN':game.player.glove?'NEHMEN':'STOPP';
 }
 function showResult(){
   const win=game.status==='won';
@@ -771,9 +793,11 @@ function inputFacing():Direction{
   return game.player.facing;
 }
 function placeBomb(){if(game.placeBomb()){beep(460,0.09,'triangle',0.025);updateHud();}}
+function useAction(){if(game.useAction()){beep(680,0.08,'triangle',0.03);updateHud();}}
 window.addEventListener('keydown',e=>{
   if(keyMap[e.code]){e.preventDefault();heldKeys.add(e.code);}
   if(e.code==='Space'){e.preventDefault();if(!e.repeat)placeBomb();}
+  if(e.code==='KeyR'){e.preventDefault();if(!e.repeat)useAction();}
   if(e.code==='KeyP'||e.code==='Escape'){e.preventDefault();if(!e.repeat)togglePause();}
 });
 window.addEventListener('keyup',e=>{if(keyMap[e.code])heldKeys.delete(e.code);});
@@ -797,6 +821,9 @@ const touchBomb=document.querySelector<HTMLButtonElement>('#touch-bomb')!;
 touchBomb.addEventListener('pointerdown',e=>{e.preventDefault();touchBomb.classList.add('active');placeBomb();touchBomb.setPointerCapture(e.pointerId);});
 for(const eventName of ['pointerup','pointercancel','lostpointercapture'])touchBomb.addEventListener(eventName,()=>touchBomb.classList.remove('active'));
 touchBomb.addEventListener('click',e=>{if(e.detail===0)placeBomb();});
+const touchAction=document.querySelector<HTMLButtonElement>('#touch-action')!;
+touchAction.addEventListener('pointerdown',e=>{e.preventDefault();useAction();});
+touchAction.addEventListener('click',e=>{if(e.detail===0)useAction();});
 for(const target of [stage,mobileControls]){
   for(const eventName of ['gesturestart','gesturechange'])target.addEventListener(eventName,e=>e.preventDefault(),{passive:false});
   target.addEventListener('dblclick',e=>e.preventDefault());
@@ -839,9 +866,8 @@ function frame(now:number){
     if(event.type==='shield'){burst(event.x,event.y,'#8ec8ff',16);shockwave(event.x,event.y,'#8ec8ff',0.75);showToast('SCHILD HAT DICH GESCHÜTZT!');beep(520,0.21,'triangle',0.04);}
     if(event.type==='upgrade'){
       const type=event.upgrade??'range';
-      const messages:Record<UpgradeType,string>={range:'FLAMMENREICHWEITE +1',capacity:'EINE BOMBE MEHR',shield:'SCHUTZSCHILD AKTIV'};
-      const colors:Record<UpgradeType,string>={range:'#ffae54',capacity:'#80ecdb',shield:'#7eb7ff'};
-      showToast(messages[type]);burst(event.x,event.y,colors[type],12);beep(880,0.24,'triangle',0.05);
+      const messages:Record<UpgradeType,string>={range:'FLAMMENREICHWEITE +1',capacity:'EINE BOMBE MEHR',speed:'TEMPO +1',remote:'FERNZÜNDER AKTIV',bombPass:'DURCH BOMBEN LAUFEN',blockPass:'DURCH KISTEN LAUFEN',glove:'BOMBEN TRAGEN & WERFEN',kick:'BOMBEN KICKEN',heart:'EIN LEBEN ZURÜCK',maxRange:'MAXIMALE REICHWEITE',powerBomb:'NÄCHSTE BOMBE: MAXIMAL',pierce:'SUPERBOMBEN: DURCH KISTEN',slime:'SCHLEIMBOMBEN',skull:'FLUCH AKTIV',shield:'SCHUTZSCHILD AKTIV'};
+      showToast(messages[type]);burst(event.x,event.y,upgradeColors[type],12);beep(880,0.24,'triangle',0.05);
     }
     if(event.type==='enemy'){burst(event.x,event.y,'#eab0ff',12);showToast('GEGNER AUSGESCHALTET!');beep(660,0.14,'triangle',0.04);}
   }
