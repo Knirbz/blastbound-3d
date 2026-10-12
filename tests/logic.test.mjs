@@ -117,6 +117,18 @@ test('a bot follows its escape route before its own bomb detonates', () => {
   assert.equal(game.bombs.length,0);
 });
 
+test('hard bots route around solid walls instead of chasing into them', () => {
+  const game=new Game(3,'hard');game.start();
+  for(const row of game.tiles)row.fill(0);
+  for(let y=1;y<=7;y++)game.tiles[y][6]=1;
+  game.player.x=8;game.player.y=5;
+  const enemy=game.enemies[0];
+  Object.assign(enemy,{x:5,y:5,targetX:5,targetY:5,bombCooldown:100});
+  game.moveEnemy(enemy);
+  assert.equal(enemy.facing,'down');
+  assert.deepEqual({x:enemy.targetX,y:enemy.targetY},{x:5,y:6});
+});
+
 test('stone and crates stop a cross explosion; the first crate is destroyed', () => {
   const game = new Game(4); game.start();
   for (const row of game.tiles) row.fill(0);
