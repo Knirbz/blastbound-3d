@@ -10,6 +10,22 @@ const canvas = document.querySelector<HTMLCanvasElement>('#game-canvas')!;
 const intro = document.querySelector<HTMLElement>('#intro')!;
 const result = document.querySelector<HTMLElement>('#result')!;
 const toast = document.querySelector<HTMLElement>('#toast')!;
+const characterOptions = document.querySelector<HTMLElement>('#character-options')!;
+const characters = [
+  {id:'character-female-a',name:'Lina'},
+  {id:'character-female-b',name:'Mira'},
+  {id:'character-female-c',name:'Nia'},
+  {id:'character-male-a',name:'Ben'},
+  {id:'character-male-b',name:'Finn'},
+  {id:'character-male-c',name:'Kai'},
+] as const;
+type CharacterId = typeof characters[number]['id'];
+const characterStorageKey = 'blastbound-character';
+let selectedCharacter:CharacterId = 'character-female-b';
+try {
+  const saved = localStorage.getItem(characterStorageKey);
+  if(characters.some(character=>character.id===saved))selectedCharacter=saved as CharacterId;
+} catch { /* Private browsing can disable storage. */ }
 const game = new Game();
 let renderer: THREE.WebGLRenderer;
 try { renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:false, powerPreference:'high-performance'}); }
@@ -176,6 +192,7 @@ let portalObjectRef:THREE.Object3D|null=null;
 const playerObject=new THREE.Group();playerObject.add(character('#24cbbd','#9cf9e6'));actors.add(playerObject);
 let playerArt:AnimatedArt|null=null;
 let enemyTemplate:GLTF|null=null;
+let playerLoadRequest=0;
 const playerShadow=mesh(new THREE.CircleGeometry(0.33,20),new THREE.MeshBasicMaterial({color:'#121e39',transparent:true,opacity:0.22}),false);
 playerShadow.rotation.x=-Math.PI/2; playerShadow.position.y=0.004;actors.add(playerShadow);
 const key=(x:number,y:number)=>Game.key(x,y);
@@ -184,13 +201,47 @@ function applyEnemyArt(group:THREE.Group,id:number){
   const old=enemyArt.get(id);if(old)old.mixer.stopAllAction();
   const art=makeAnimatedArt(enemyTemplate);group.clear();group.add(art.model);enemyArt.set(id,art);
 }
-function loadKenneyAssets(){
-  const loader=new GLTFLoader();
+const assetLoader=new GLTFLoader();
+function loadPlayerArt(){
+  const request=++playerLoadRequest;
   const base='/assets/kenney/';
-  loader.load(`${base}characters/character-female-b.glb`,gltf=>{
+  assetLoader.load(`${base}characters/${selectedCharacter}.glb`,gltf=>{
+    if(request!==playerLoadRequest)return;
+    playerArt?.mixer.stopAllAction();
     playerArt=makeAnimatedArt(gltf);playerObject.clear();playerObject.add(playerArt.model);
-  },undefined,error=>console.warn('Kenney player asset unavailable',error));
-  loader.load(`${base}arena/character-soldier.glb`,gltf=>{
+  },undefined,error=>{
+    if(request!==playerLoadRequest)return;
+    console.warn('Kenney player asset unavailable',error);
+    playerArt?.mixer.stopAllAction();playerArt=null;
+    playerObject.clear();playerObject.add(character('#24cbbd','#9cf9e6'));
+  });
+}
+function renderCharacterOptions(){
+  for(const character of characters){
+    const button=document.createElement('button');
+    button.type='button';button.className='character-option';
+    button.setAttribute('aria-label',`${character.name} auswählen`);
+    button.setAttribute('aria-pressed',String(character.id===selectedCharacter));
+    button.dataset.character=character.id;
+    const preview=document.createElement('img');
+    preview.src=`/assets/kenney/characters/previews/${character.id}.png`;
+    preview.alt='';preview.width=64;preview.height=64;
+    button.append(preview,document.createElement('span'));
+    button.lastElementChild!.textContent=character.name;
+    button.addEventListener('click',()=>{
+      if(selectedCharacter===character.id)return;
+      selectedCharacter=character.id;
+      try {localStorage.setItem(characterStorageKey,selectedCharacter);} catch { /* Selection still works for this visit. */ }
+      for(const option of characterOptions.querySelectorAll<HTMLButtonElement>('button'))
+        option.setAttribute('aria-pressed',String(option.dataset.character===selectedCharacter));
+      loadPlayerArt();
+    });
+    characterOptions.append(button);
+  }
+}
+function loadKenneyAssets(){
+  loadPlayerArt();
+  assetLoader.load('/assets/kenney/arena/character-soldier.glb',gltf=>{
     enemyTemplate=gltf;
     for(const [id,obj] of enemyObjects)applyEnemyArt(obj,id);
   },undefined,error=>console.warn('Kenney enemy asset unavailable',error));
@@ -328,4 +379,4 @@ function frame(now:number){
   if(toastTimer>0){toastTimer-=dt;if(toastTimer<=0)toast.classList.add('hidden');}
   updateParticles(dt);syncDynamic();playerArt?.mixer.update(dt);for(const art of enemyArt.values())art.mixer.update(dt);updateHud();renderer.render(scene,camera);
 }
-playerObject.position.copy(world(game.player));syncStatic();loadKenneyAssets();updateHud();requestAnimationFrame(frame);
+playerObject.position.copy(world(game.player));syncStatic();renderCharacterOptions();loadKenneyAssets();updateHud();requestAnimationFrame(frame);

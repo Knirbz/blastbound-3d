@@ -16,6 +16,8 @@ npm run dev
 - **P** oder **Escape**: Pause
 - Auf Smartphones: Bildschirmtasten für Bewegung und Bombe
 
+Vor dem Start kannst du eine von sechs Kenney-Figuren auswählen. Die Auswahl wird im Browser gespeichert und beim nächsten Besuch wiederhergestellt.
+
 Besiege alle drei Gegner und sprenge das Portal frei. Danach betritt das Portal, um zu gewinnen. Kisten können Upgrades für Flammenreichweite und Bombenkapazität enthalten.
 
 ## Prüfen
@@ -50,6 +52,8 @@ Dafür ist eine lokale Cloudflare-Anmeldung mit `npx wrangler login` erforderlic
 ## 3D-Assets
 
 Die animierten Figuren stammen aus den vom Nutzer bereitgestellten Kenney-Archiven `kenney_mini-characters.zip` (Version 1.0) und `kenney_mini-arena.zip` (Version 1.1). Die verwendeten GLB-Dateien und ihre externen Farbtexturen liegen unverändert unter `public/assets/kenney/`; ihre jeweiligen CC0-Lizenzdateien liegen daneben. Im Spiel werden die Modelle nur einheitlich skaliert. Bei einem Ladefehler bleiben die ursprünglichen Three.js-Figuren als technische Rückfallebene nutzbar.
+
+Die sechs auswählbaren Figuren und ihre Vorschauen wurden aus dem [offiziellen Mini-Characters-Paket](https://kenney.nl/assets/mini-characters) übernommen. Die Vorschaubilder liegen unter `public/assets/kenney/characters/previews/`.
 
 Der beige Steinblock aus Mini Arena wurde im Spiel getestet, aber Kisten und unzerstörbare Mauern waren damit schwer zu unterscheiden. Die vorhandenen kontrastreichen Three.js-Mauern und Kisten bleiben vorerst im Einsatz, bis passende eigenständige 3D-Assets vorliegen.
 
