@@ -1,10 +1,12 @@
 export const WIDTH = 13;
 export const HEIGHT = 11;
+export const PLAYER_SPEED = 3.1; // tiles per second
+export const ENEMY_SPEED = 1.45;
 export type Tile = 0 | 1 | 2; // floor, stone, crate
 export type Direction = 'up' | 'down' | 'left' | 'right';
 export type Point = { x: number; y: number };
 export type Bomb = Point & { fuse: number; range: number; ownerPass: boolean; id: number };
-export type Enemy = Point & { id: number; moveTimer: number; alive: boolean; facing: Direction };
+export type Enemy = Point & { id: number; targetX: number; targetY: number; moveTimer: number; alive: boolean; facing: Direction };
 export type Upgrade = Point & { type: 'range' | 'capacity' };
 export type GameEvent = { type: 'explode' | 'crate' | 'hit' | 'upgrade' | 'enemy' | 'bomb'; x: number; y: number };
 
@@ -12,6 +14,15 @@ const dirs: Record<Direction, Point> = {
   up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 },
 };
 const directionList: Direction[] = ['up', 'right', 'down', 'left'];
+const PLAYER_RADIUS = 0.26;
+const BOMB_RADIUS = 0.31;
+const BLOCK_HALF_SIZE = 0.455;
+
+function circleTouchesSquare(x: number, y: number, radius: number, cx: number, cy: number, halfSize: number) {
+  const dx = Math.max(Math.abs(x - cx) - halfSize, 0);
+  const dy = Math.max(Math.abs(y - cy) - halfSize, 0);
+  return dx * dx + dy * dy < radius * radius;
+}
 
 export class Game {
   tiles: Tile[][] = [];
@@ -44,31 +55,44 @@ export class Game {
     this.tiles[this.portal.y][this.portal.x] = 2;
     this.fire.clear(); this.bombs = []; this.upgrades = []; this.events = [];
     this.player = { x: 1, y: 1, lives: 3, invincible: 0, range: 2, capacity: 1, facing: 'down' };
-    this.enemies = [{x:11,y:1},{x:1,y:9},{x:11,y:9}].map(p => ({ ...p, id: ++this.enemyId, moveTimer: 0.4 + this.rand() * 0.25, alive: true, facing: 'down' as Direction }));
+    this.enemies = [{x:11,y:1},{x:1,y:9},{x:11,y:9}].map(p => ({ ...p, targetX:p.x, targetY:p.y, id: ++this.enemyId, moveTimer: 0.45 + this.rand() * 0.2, alive: true, facing: 'down' as Direction }));
     this.status = 'ready'; this.elapsed = 0;
   }
   start() { if (this.status === 'ready') this.status = 'running'; }
   togglePause() { if (this.status === 'running') this.status = 'paused'; else if (this.status === 'paused') this.status = 'running'; }
-  canEnter(x: number, y: number, who: 'player' | 'enemy') {
+  canEnemyEnter(x: number, y: number) {
     if (this.tile(x,y) !== 0) return false;
-    const bomb = this.bombs.find(b => b.x === x && b.y === y);
-    if (!bomb) return true;
-    return who === 'player' && bomb.ownerPass && this.player.x === x && this.player.y === y;
+    return !this.bombs.some(b => b.x === x && b.y === y);
   }
-  move(direction: Direction) {
+  private canOccupy(x: number, y: number) {
+    for (let ty = Math.floor(y - 1); ty <= Math.ceil(y + 1); ty++) {
+      for (let tx = Math.floor(x - 1); tx <= Math.ceil(x + 1); tx++) {
+        if (this.tile(tx,ty) !== 0 && circleTouchesSquare(x,y,PLAYER_RADIUS,tx,ty,BLOCK_HALF_SIZE)) return false;
+      }
+    }
+    return !this.bombs.some(b => !b.ownerPass && Math.hypot(x-b.x,y-b.y) < PLAYER_RADIUS + BOMB_RADIUS);
+  }
+  move(dx: number, dy: number, dt: number, facing: Direction) {
     if (this.status !== 'running') return false;
-    this.player.facing = direction;
-    const d = dirs[direction], x = this.player.x + d.x, y = this.player.y + d.y;
-    if (!this.canEnter(x,y,'player')) return false;
-    const origin = { x: this.player.x, y: this.player.y };
-    this.player.x = x; this.player.y = y;
-    for (const bomb of this.bombs) if (bomb.x === origin.x && bomb.y === origin.y) bomb.ownerPass = false;
+    if (!dx && !dy) return false;
+    this.player.facing = facing;
+    const length = Math.hypot(dx,dy);
+    const step = PLAYER_SPEED * Math.min(dt,0.1) / length;
+    const nextX = this.player.x + dx * step;
+    const nextY = this.player.y + dy * step;
+    const oldX = this.player.x, oldY = this.player.y;
+    if (this.canOccupy(nextX,this.player.y)) this.player.x = nextX;
+    if (this.canOccupy(this.player.x,nextY)) this.player.y = nextY;
+    for (const bomb of this.bombs)
+      if (bomb.ownerPass && Math.hypot(this.player.x-bomb.x,this.player.y-bomb.y) >= PLAYER_RADIUS+BOMB_RADIUS) bomb.ownerPass = false;
+    if (this.player.x === oldX && this.player.y === oldY) return false;
     this.collectUpgrade(); this.checkHazards(); this.checkWin();
     return true;
   }
   placeBomb() {
     if (this.status !== 'running' || this.bombs.length >= this.player.capacity) return false;
-    const {x,y} = this.player;
+    const x = Math.round(this.player.x), y = Math.round(this.player.y);
+    if (this.tile(x,y) !== 0) return false;
     if (this.bombs.some(b => b.x === x && b.y === y)) return false;
     this.bombs.push({x,y,fuse:2.15,range:this.player.range,ownerPass:true,id:++this.bombId});
     this.events.push({type:'bomb',x,y});
@@ -83,21 +107,29 @@ export class Game {
     for (const bomb of exploding) this.explode(bomb);
     for (const enemy of this.enemies) {
       if (!enemy.alive) continue;
-      enemy.moveTimer -= dt;
-      if (enemy.moveTimer <= 0) {
-        enemy.moveTimer = 0.34 + this.rand() * 0.2;
-        this.moveEnemy(enemy);
+      const remaining = Math.hypot(enemy.targetX-enemy.x,enemy.targetY-enemy.y);
+      if (remaining > 0) {
+        const step = Math.min(remaining,ENEMY_SPEED*dt);
+        enemy.x += (enemy.targetX-enemy.x)/remaining*step;
+        enemy.y += (enemy.targetY-enemy.y)/remaining*step;
+        if (step === remaining) { enemy.x=enemy.targetX; enemy.y=enemy.targetY; }
+      } else {
+        enemy.moveTimer -= dt;
+        if (enemy.moveTimer <= 0) {
+          enemy.moveTimer = 0.08 + this.rand() * 0.12;
+          this.moveEnemy(enemy);
+        }
       }
     }
     this.checkHazards(); this.checkWin();
   }
   private moveEnemy(enemy: Enemy) {
-    const choices = directionList.filter(dir => { const d=dirs[dir], x=enemy.x+d.x, y=enemy.y+d.y; return this.canEnter(x,y,'enemy') && !this.fire.has(Game.key(x,y)); });
+    const choices = directionList.filter(dir => { const d=dirs[dir], x=enemy.x+d.x, y=enemy.y+d.y; return this.canEnemyEnter(x,y) && !this.fire.has(Game.key(x,y)); });
     if (!choices.length) return;
     const direct = choices.map(dir => { const d=dirs[dir], x=enemy.x+d.x, y=enemy.y+d.y; return {dir, score: Math.abs(x-this.player.x)+Math.abs(y-this.player.y)+this.rand()*3}; });
     direct.sort((a,b)=>a.score-b.score);
     const chosen = this.rand() < 0.75 ? direct[0].dir : choices[Math.floor(this.rand()*choices.length)];
-    enemy.x += dirs[chosen].x; enemy.y += dirs[chosen].y; enemy.facing = chosen;
+    enemy.targetX = enemy.x + dirs[chosen].x; enemy.targetY = enemy.y + dirs[chosen].y; enemy.facing = chosen;
   }
   private explode(bomb: Bomb) {
     const index = this.bombs.indexOf(bomb); if (index < 0) return;
@@ -120,22 +152,26 @@ export class Game {
     this.checkHazards();
   }
   private collectUpgrade() {
-    const index=this.upgrades.findIndex(p=>p.x===this.player.x && p.y===this.player.y); if (index<0) return;
+    const index=this.upgrades.findIndex(p=>Math.hypot(p.x-this.player.x,p.y-this.player.y)<0.4); if (index<0) return;
     const upgrade=this.upgrades.splice(index,1)[0];
     if (upgrade.type==='range') this.player.range=Math.min(6,this.player.range+1);
     else this.player.capacity=Math.min(5,this.player.capacity+1);
     this.events.push({type:'upgrade',x:upgrade.x,y:upgrade.y});
   }
   private checkHazards() {
-    for (const enemy of this.enemies) if (enemy.alive && this.fire.has(Game.key(enemy.x,enemy.y))) { enemy.alive=false; this.events.push({type:'enemy',x:enemy.x,y:enemy.y}); }
-    const dangerous = this.fire.has(Game.key(this.player.x,this.player.y)) || this.enemies.some(e=>e.alive && e.x===this.player.x && e.y===this.player.y);
+    const fireCells = [...this.fire.keys()].map(key=>key.split(',').map(Number));
+    for (const enemy of this.enemies) if (enemy.alive && fireCells.some(([x,y])=>circleTouchesSquare(enemy.x,enemy.y,PLAYER_RADIUS,x,y,0.44))) {
+      enemy.alive=false; this.events.push({type:'enemy',x:Math.round(enemy.x),y:Math.round(enemy.y)});
+    }
+    const inFire = fireCells.some(([x,y])=>circleTouchesSquare(this.player.x,this.player.y,PLAYER_RADIUS,x,y,0.44));
+    const dangerous = inFire || this.enemies.some(e=>e.alive && Math.hypot(e.x-this.player.x,e.y-this.player.y)<PLAYER_RADIUS*2);
     if (dangerous && this.player.invincible<=0) {
-      this.player.lives--; this.player.invincible=1.45; this.events.push({type:'hit',x:this.player.x,y:this.player.y});
+      this.player.lives--; this.player.invincible=1.45; this.events.push({type:'hit',x:Math.round(this.player.x),y:Math.round(this.player.y)});
       if (this.player.lives<=0) this.status='lost';
     }
   }
   private checkWin() {
-    if (this.status==='running' && this.enemies.every(e=>!e.alive) && this.player.x===this.portal.x && this.player.y===this.portal.y && this.tile(this.portal.x,this.portal.y)===0) this.status='won';
+    if (this.status==='running' && this.enemies.every(e=>!e.alive) && Math.hypot(this.player.x-this.portal.x,this.player.y-this.portal.y)<0.4 && this.tile(this.portal.x,this.portal.y)===0) this.status='won';
   }
   drainEvents() { return this.events.splice(0); }
   get aliveEnemies() { return this.enemies.filter(e=>e.alive).length; }
