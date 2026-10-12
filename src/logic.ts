@@ -7,8 +7,10 @@ export type Direction = 'up' | 'down' | 'left' | 'right';
 export type Point = { x: number; y: number };
 export type Bomb = Point & { fuse: number; range: number; ownerPass: boolean; id: number };
 export type Enemy = Point & { id: number; targetX: number; targetY: number; moveTimer: number; alive: boolean; facing: Direction };
-export type Upgrade = Point & { type: 'range' | 'capacity' };
-export type GameEvent = { type: 'explode' | 'crate' | 'hit' | 'upgrade' | 'enemy' | 'bomb'; x: number; y: number };
+export type UpgradeType = 'range' | 'capacity' | 'shield';
+export type BlastKind = 'normal' | 'powered' | 'chain';
+export type Upgrade = Point & { type: UpgradeType };
+export type GameEvent = { type: 'explode' | 'crate' | 'hit' | 'shield' | 'upgrade' | 'enemy' | 'bomb'; x: number; y: number; kind?: BlastKind; upgrade?: UpgradeType };
 
 const dirs: Record<Direction, Point> = {
   up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 },
@@ -27,11 +29,12 @@ function circleTouchesSquare(x: number, y: number, radius: number, cx: number, c
 export class Game {
   tiles: Tile[][] = [];
   fire = new Map<string, number>();
+  fireKinds = new Map<string, BlastKind>();
   bombs: Bomb[] = [];
   enemies: Enemy[] = [];
   upgrades: Upgrade[] = [];
   events: GameEvent[] = [];
-  player = { x: 1, y: 1, lives: 3, invincible: 0, range: 2, capacity: 1, facing: 'down' as Direction };
+  player = { x: 1, y: 1, lives: 3, shield: 0, invincible: 0, range: 2, capacity: 1, facing: 'down' as Direction };
   portal: Point = { x: 9, y: 7 };
   status: 'ready' | 'running' | 'paused' | 'won' | 'lost' = 'ready';
   elapsed = 0;
@@ -53,8 +56,8 @@ export class Game {
     const safe = [[1,1],[2,1],[1,2],[11,1],[10,1],[11,2],[1,9],[2,9],[1,8],[11,9],[10,9],[11,8]];
     for (const [x,y] of safe) this.tiles[y][x] = 0;
     this.tiles[this.portal.y][this.portal.x] = 2;
-    this.fire.clear(); this.bombs = []; this.upgrades = []; this.events = [];
-    this.player = { x: 1, y: 1, lives: 3, invincible: 0, range: 2, capacity: 1, facing: 'down' };
+    this.fire.clear(); this.fireKinds.clear(); this.bombs = []; this.upgrades = []; this.events = [];
+    this.player = { x: 1, y: 1, lives: 3, shield: 0, invincible: 0, range: 2, capacity: 1, facing: 'down' };
     this.enemies = [{x:11,y:1},{x:1,y:9},{x:11,y:9}].map(p => ({ ...p, targetX:p.x, targetY:p.y, id: ++this.enemyId, moveTimer: 0.45 + this.rand() * 0.2, alive: true, facing: 'down' as Direction }));
     this.status = 'ready'; this.elapsed = 0;
   }
@@ -102,7 +105,7 @@ export class Game {
     if (this.status !== 'running') return;
     dt = Math.min(dt, 0.1); this.elapsed += dt;
     if (this.player.invincible > 0) this.player.invincible = Math.max(0, this.player.invincible - dt);
-    for (const [key,ttl] of this.fire) { const next = ttl - dt; if (next <= 0) this.fire.delete(key); else this.fire.set(key,next); }
+    for (const [key,ttl] of this.fire) { const next = ttl - dt; if (next <= 0) { this.fire.delete(key); this.fireKinds.delete(key); } else this.fire.set(key,next); }
     const exploding = this.bombs.filter(b => (b.fuse -= dt) <= 0);
     for (const bomb of exploding) this.explode(bomb);
     for (const enemy of this.enemies) {
@@ -131,11 +134,21 @@ export class Game {
     const chosen = this.rand() < 0.75 ? direct[0].dir : choices[Math.floor(this.rand()*choices.length)];
     enemy.targetX = enemy.x + dirs[chosen].x; enemy.targetY = enemy.y + dirs[chosen].y; enemy.facing = chosen;
   }
-  private explode(bomb: Bomb) {
+  private explode(bomb: Bomb, chained = false) {
     const index = this.bombs.indexOf(bomb); if (index < 0) return;
-    this.bombs.splice(index,1); this.events.push({type:'explode',x:bomb.x,y:bomb.y});
-    const ignite = (x:number,y:number) => { this.fire.set(Game.key(x,y),0.56); const chained = this.bombs.find(b => b.x===x && b.y===y); if (chained) this.explode(chained); };
+    const kind:BlastKind = chained ? 'chain' : bomb.range > 2 ? 'powered' : 'normal';
+    this.bombs.splice(index,1); this.events.push({type:'explode',x:bomb.x,y:bomb.y,kind});
+    const ignite = (x:number,y:number) => {
+      const key=Game.key(x,y);
+      this.fire.set(key,0.56);
+      const priority:Record<BlastKind,number>={normal:0,chain:1,powered:2};
+      const previous=this.fireKinds.get(key);
+      if(!previous || priority[kind]>=priority[previous])this.fireKinds.set(key,kind);
+      const chainedBomb = this.bombs.find(b => b.x===x && b.y===y);
+      if (chainedBomb) this.explode(chainedBomb,true);
+    };
     ignite(bomb.x,bomb.y);
+    this.fireKinds.set(Game.key(bomb.x,bomb.y),kind);
     for (const dir of directionList) {
       const d=dirs[dir];
       for (let step=1;step<=bomb.range;step++) {
@@ -144,7 +157,10 @@ export class Game {
         ignite(x,y);
         if (tile===2) {
           this.tiles[y][x]=0; this.events.push({type:'crate',x,y});
-          if (this.rand()<0.16 && !(x===this.portal.x && y===this.portal.y)) this.upgrades.push({x,y,type:this.rand()<0.65?'range':'capacity'});
+          if (this.rand()<0.24 && !(x===this.portal.x && y===this.portal.y)) {
+            const roll=this.rand();
+            this.upgrades.push({x,y,type:roll<0.48?'range':roll<0.78?'capacity':'shield'});
+          }
           break;
         }
       }
@@ -155,8 +171,9 @@ export class Game {
     const index=this.upgrades.findIndex(p=>Math.hypot(p.x-this.player.x,p.y-this.player.y)<0.4); if (index<0) return;
     const upgrade=this.upgrades.splice(index,1)[0];
     if (upgrade.type==='range') this.player.range=Math.min(6,this.player.range+1);
-    else this.player.capacity=Math.min(5,this.player.capacity+1);
-    this.events.push({type:'upgrade',x:upgrade.x,y:upgrade.y});
+    else if (upgrade.type==='capacity') this.player.capacity=Math.min(5,this.player.capacity+1);
+    else this.player.shield=1;
+    this.events.push({type:'upgrade',x:upgrade.x,y:upgrade.y,upgrade:upgrade.type});
   }
   private checkHazards() {
     const fireCells = [...this.fire.keys()].map(key=>key.split(',').map(Number));
@@ -166,6 +183,11 @@ export class Game {
     const inFire = fireCells.some(([x,y])=>circleTouchesSquare(this.player.x,this.player.y,PLAYER_RADIUS,x,y,0.44));
     const dangerous = inFire || this.enemies.some(e=>e.alive && Math.hypot(e.x-this.player.x,e.y-this.player.y)<PLAYER_RADIUS*2);
     if (dangerous && this.player.invincible<=0) {
+      if (this.player.shield>0) {
+        this.player.shield=0; this.player.invincible=0.8;
+        this.events.push({type:'shield',x:Math.round(this.player.x),y:Math.round(this.player.y)});
+        return;
+      }
       this.player.lives--; this.player.invincible=1.45; this.events.push({type:'hit',x:Math.round(this.player.x),y:Math.round(this.player.y)});
       if (this.player.lives<=0) this.status='lost';
     }
