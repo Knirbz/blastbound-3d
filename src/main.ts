@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
+import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { Game, WIDTH, HEIGHT, type Direction, type Point } from './logic';
 import './style.css';
 
@@ -17,20 +19,20 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.5;
+renderer.toneMappingExposure = 1.0;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#171e34');
 scene.fog = new THREE.Fog('#171e34', 20, 38);
 const camera = new THREE.OrthographicCamera(-8,8,7,-7,0.1,100);
 camera.position.set(0,19,11.5); camera.lookAt(0,0,0);
-scene.add(new THREE.HemisphereLight('#e7f6ff','#59618a',2.8));
-const sun = new THREE.DirectionalLight('#fff3d9',3.4);
+scene.add(new THREE.HemisphereLight('#e7f6ff','#59618a',2.0));
+const sun = new THREE.DirectionalLight('#fff3d9',2.4);
 sun.position.set(-5,13,7); sun.castShadow=true;
 sun.shadow.mapSize.set(2048,2048); sun.shadow.camera.left=-12; sun.shadow.camera.right=12; sun.shadow.camera.top=12; sun.shadow.camera.bottom=-12;
 sun.shadow.normalBias=0.025; sun.shadow.bias=-0.0001;
 scene.add(sun);
-const rim = new THREE.DirectionalLight('#7789ff',1.3); rim.position.set(8,6,-9); scene.add(rim);
+const rim = new THREE.DirectionalLight('#7789ff',0.8); rim.position.set(8,6,-9); scene.add(rim);
 
 const mat = (color:string, roughness=0.65, metalness=0) => new THREE.MeshStandardMaterial({color,roughness,metalness});
 const floorA=mat('#536985'), floorB=mat('#49617e'), floorEdge=mat('#263a58');
@@ -45,6 +47,7 @@ const upgradeMats={range:new THREE.MeshStandardMaterial({color:'#ffae54',emissiv
 const mesh=(geometry:THREE.BufferGeometry, material:THREE.Material, shadow=true) => {const o=new THREE.Mesh(geometry,material); o.castShadow=shadow; o.receiveShadow=true; return o;};
 const rounded=(w:number,h:number,d:number,r:number,m:THREE.Material)=>mesh(new RoundedBoxGeometry(w,h,d,3,r),m);
 const world=(p:Point)=>new THREE.Vector3(p.x-(WIDTH-1)/2,0,p.y-(HEIGHT-1)/2);
+const facingYaw:Record<Direction,number>={down:0,right:Math.PI/2,up:Math.PI,left:-Math.PI/2};
 const board = new THREE.Group(); scene.add(board);
 const props = new THREE.Group(); scene.add(props);
 const actors = new THREE.Group(); scene.add(actors);
@@ -56,7 +59,6 @@ for(let y=0;y<HEIGHT;y++)for(let x=0;x<WIDTH;x++){
 }
 const rimBase=rounded(WIDTH+1.2,0.34,HEIGHT+1.2,0.22,mat('#202d48'));
 rimBase.position.y=-0.55; board.add(rimBase);
-
 function stoneBlock(){
   const g=new THREE.Group();
   const body=rounded(0.91,0.89,0.91,0.13,stone); body.position.y=0.43;g.add(body);
@@ -121,9 +123,32 @@ function upgradeObject(type:'range'|'capacity'){
   return g;
 }
 
+type AnimatedArt={model:THREE.Object3D;mixer:THREE.AnimationMixer;idle:THREE.AnimationAction|null;walk:THREE.AnimationAction|null;active:THREE.AnimationAction|null};
+function makeAnimatedArt(gltf:GLTF):AnimatedArt{
+  const model=cloneSkeleton(gltf.scene);
+  model.traverse(child=>{if(child instanceof THREE.Mesh){child.castShadow=true;child.receiveShadow=true;}});
+  const bounds=new THREE.Box3().setFromObject(model);
+  const size=bounds.getSize(new THREE.Vector3());
+  const scale=Math.min(0.82/Math.max(size.x,size.z,0.01),0.95/Math.max(size.y,0.01));
+  model.scale.multiplyScalar(scale);
+  model.position.y=-bounds.min.y*scale;
+  const mixer=new THREE.AnimationMixer(model);
+  const idleClip=THREE.AnimationClip.findByName(gltf.animations,'idle');
+  const walkClip=THREE.AnimationClip.findByName(gltf.animations,'walk');
+  const idle=idleClip?mixer.clipAction(idleClip):null;
+  const walk=walkClip?mixer.clipAction(walkClip):null;
+  if(idle)idle.play();
+  return {model,mixer,idle,walk,active:idle};
+}
+function setAnimatedState(art:AnimatedArt|null,moving:boolean){
+  if(!art)return;
+  const next=moving?(art.walk??art.idle):(art.idle??art.walk);
+  if(next&&next!==art.active){next.reset().play();if(art.active)next.crossFadeFrom(art.active,0.14,false);art.active=next;}
+}
 const tileObjects=new Map<string,THREE.Object3D>();
 const bombObjects=new Map<number,THREE.Object3D>();
-const enemyObjects=new Map<number,THREE.Object3D>();
+const enemyObjects=new Map<number,THREE.Group>();
+const enemyArt=new Map<number,AnimatedArt>();
 const fireObjects=new Map<string,THREE.Object3D>();
 const upgradeObjects=new Map<string,THREE.Object3D>();
 type Particle = { object: THREE.Mesh; velocity: THREE.Vector3; life: number; maxLife: number };
@@ -148,10 +173,28 @@ function updateParticles(dt:number){
   }
 }
 let portalObjectRef:THREE.Object3D|null=null;
-const playerObject=character('#24cbbd','#9cf9e6');actors.add(playerObject);
+const playerObject=new THREE.Group();playerObject.add(character('#24cbbd','#9cf9e6'));actors.add(playerObject);
+let playerArt:AnimatedArt|null=null;
+let enemyTemplate:GLTF|null=null;
 const playerShadow=mesh(new THREE.CircleGeometry(0.33,20),new THREE.MeshBasicMaterial({color:'#121e39',transparent:true,opacity:0.22}),false);
 playerShadow.rotation.x=-Math.PI/2; playerShadow.position.y=0.004;actors.add(playerShadow);
 const key=(x:number,y:number)=>Game.key(x,y);
+function applyEnemyArt(group:THREE.Group,id:number){
+  if(!enemyTemplate)return;
+  const old=enemyArt.get(id);if(old)old.mixer.stopAllAction();
+  const art=makeAnimatedArt(enemyTemplate);group.clear();group.add(art.model);enemyArt.set(id,art);
+}
+function loadKenneyAssets(){
+  const loader=new GLTFLoader();
+  const base='/assets/kenney/';
+  loader.load(`${base}characters/character-female-b.glb`,gltf=>{
+    playerArt=makeAnimatedArt(gltf);playerObject.clear();playerObject.add(playerArt.model);
+  },undefined,error=>console.warn('Kenney player asset unavailable',error));
+  loader.load(`${base}arena/character-soldier.glb`,gltf=>{
+    enemyTemplate=gltf;
+    for(const [id,obj] of enemyObjects)applyEnemyArt(obj,id);
+  },undefined,error=>console.warn('Kenney enemy asset unavailable',error));
+}
 function syncStatic(){
   for(let y=0;y<HEIGHT;y++)for(let x=0;x<WIDTH;x++){
     const id=key(x,y),tile=game.tile(x,y),existing=tileObjects.get(id);
@@ -163,13 +206,19 @@ function syncStatic(){
   if(game.tile(game.portal.x,game.portal.y)!==0 && portalObjectRef){props.remove(portalObjectRef);portalObjectRef=null;}
 }
 function syncDynamic(){
-  const p=world(game.player);playerObject.position.lerp(new THREE.Vector3(p.x,0,p.z),0.34);playerShadow.position.x=playerObject.position.x;playerShadow.position.z=playerObject.position.z;
+  const p=world(game.player),playerTarget=new THREE.Vector3(p.x,0,p.z);
+  playerObject.rotation.y=facingYaw[game.player.facing];
+  setAnimatedState(playerArt,playerObject.position.distanceTo(playerTarget)>0.025);
+  playerObject.position.lerp(playerTarget,0.34);playerShadow.position.x=playerObject.position.x;playerShadow.position.z=playerObject.position.z;
   playerObject.visible=game.player.invincible<=0||Math.floor(performance.now()/90)%2===0;
   for(const enemy of game.enemies){
     let obj=enemyObjects.get(enemy.id);
-    if(!enemy.alive){if(obj){actors.remove(obj);enemyObjects.delete(enemy.id);}continue;}
-    if(!obj){obj=character('#b768ec','#edb6ff',true);obj.position.copy(world(enemy));actors.add(obj);enemyObjects.set(enemy.id,obj);}
-    const v=world(enemy);obj.position.lerp(new THREE.Vector3(v.x,0,v.z),0.25);
+    if(!enemy.alive){if(obj){actors.remove(obj);enemyObjects.delete(enemy.id);enemyArt.get(enemy.id)?.mixer.stopAllAction();enemyArt.delete(enemy.id);}continue;}
+    if(!obj){obj=new THREE.Group();obj.add(character('#b768ec','#edb6ff',true));obj.position.copy(world(enemy));actors.add(obj);enemyObjects.set(enemy.id,obj);applyEnemyArt(obj,enemy.id);}
+    const v=world(enemy),target=new THREE.Vector3(v.x,0,v.z);
+    obj.rotation.y=facingYaw[enemy.facing];
+    setAnimatedState(enemyArt.get(enemy.id)??null,obj.position.distanceTo(target)>0.025);
+    obj.position.lerp(target,0.25);
   }
   for(const bomb of game.bombs){
     let obj=bombObjects.get(bomb.id);
@@ -188,13 +237,13 @@ function syncDynamic(){
   for(const [id,obj] of upgradeObjects)if(!game.upgrades.some(u=>key(u.x,u.y)===id)){props.remove(obj);upgradeObjects.delete(id);}
   if(portalObjectRef){portalObjectRef.rotation.y+=0.012;portalObjectRef.position.y=0.04*Math.sin(performance.now()*0.003);}
   const t=performance.now()*0.002;
-  playerObject.rotation.y=Math.sin(t)*0.04;
   playerObject.position.y=0.025*Math.sin(t*2);
 }
 function clearObjects(){
   for(const obj of tileObjects.values())props.remove(obj);tileObjects.clear();
   for(const obj of bombObjects.values())props.remove(obj);bombObjects.clear();
   for(const obj of enemyObjects.values())actors.remove(obj);enemyObjects.clear();
+  for(const art of enemyArt.values())art.mixer.stopAllAction();enemyArt.clear();
   for(const obj of fireObjects.values())effects.remove(obj);fireObjects.clear();
   for(const obj of upgradeObjects.values())props.remove(obj);upgradeObjects.clear();
   for(const p of particles){effects.remove(p.object);(p.object.material as THREE.Material).dispose();}particles.length=0;
@@ -277,6 +326,6 @@ function frame(now:number){
   }
   if(lastStatus!==game.status){if(game.status==='won'||game.status==='lost')showResult();lastStatus=game.status;}
   if(toastTimer>0){toastTimer-=dt;if(toastTimer<=0)toast.classList.add('hidden');}
-  updateParticles(dt);syncDynamic();updateHud();renderer.render(scene,camera);
+  updateParticles(dt);syncDynamic();playerArt?.mixer.update(dt);for(const art of enemyArt.values())art.mixer.update(dt);updateHud();renderer.render(scene,camera);
 }
-playerObject.position.copy(world(game.player));syncStatic();updateHud();requestAnimationFrame(frame);
+playerObject.position.copy(world(game.player));syncStatic();loadKenneyAssets();updateHud();requestAnimationFrame(frame);
