@@ -14,7 +14,9 @@ npm run dev
 - **WASD** oder **Pfeiltasten**: bewegen
 - **Leertaste**: Bombe legen
 - **P** oder **Escape**: Pause
-- Auf Smartphones: Bildschirmtasten für Bewegung und Bombe
+- Auf Smartphones: D-Pad gedrückt halten und den Daumen für Richtungswechsel oder diagonale Bewegung ziehen; separater Bombenknopf
+
+Im laufenden Spiel verhindern das Spielfeld und die Touchsteuerung Browser-Zoomgesten. Der Startbildschirm bleibt auf kleinen Geräten scrollbar, falls er nicht vollständig in die verfügbare Höhe passt.
 
 Halte eine Richtung gedrückt, um dich frei zwischen den Feldern zu bewegen. Zwei Richtungen gleichzeitig ergeben eine diagonale Bewegung. Wände, Kisten und Bomben blockieren die Figur direkt an ihrer Kante; Explosionen können sie auch treffen, wenn sie nur teilweise in einem betroffenen Feld steht. Bomben werden auf dem nächstgelegenen Feld platziert.
 

@@ -335,31 +335,85 @@ function showResult(){
   document.querySelector('#result-kicker')!.textContent=win?'ARENA GESCHAFFT':'RUNDE VORBEI';
   document.querySelector('#result-title')!.textContent=win?'STARK GESPIELT!':'KABOOM!';
   document.querySelector('#result-copy')!.textContent=win?`Alle Gegner besiegt in ${Math.floor(game.elapsed)} Sekunden. Bereit für eine neue Runde?`:'Deine Leben sind aufgebraucht. Plane deinen nächsten Fluchtweg und versuch es erneut.';
-  result.classList.remove('hidden');beep(win?780:180,0.35,'triangle',0.08);
+  stage.classList.remove('game-active');result.classList.remove('hidden');beep(win?780:180,0.35,'triangle',0.08);
 }
 function start(restart=false){
   if(restart){clearObjects();game.reset();playerObject.position.copy(world(game.player));syncStatic();}
-  game.start();intro.classList.add('hidden');result.classList.add('hidden');updateHud();
+  game.start();stage.classList.add('game-active');intro.classList.add('hidden');result.classList.add('hidden');updateHud();
 }
 document.querySelector('#start-button')!.addEventListener('click',()=>start());
 document.querySelector('#restart-button')!.addEventListener('click',()=>start(true));
 document.querySelector('#pause-button')!.addEventListener('click',()=>{game.togglePause();showToast(game.status==='paused'?'PAUSIERT':'WEITER GEHT’S');updateHud();});
-const held=new Set<Direction>();
 const keyMap:Record<string,Direction>={ArrowUp:'up',KeyW:'up',ArrowDown:'down',KeyS:'down',ArrowLeft:'left',KeyA:'left',ArrowRight:'right',KeyD:'right'};
+const heldKeys=new Set<string>();
+const touchDirections=new Set<Direction>();
+let touchFacing:Direction|null=null;
+const dpad=document.querySelector<HTMLElement>('#touch-dpad')!;
+const mobileControls=document.querySelector<HTMLElement>('.mobile-controls')!;
+let padPointer:number|null=null;
+function resetDpad(){
+  padPointer=null;touchFacing=null;touchDirections.clear();
+  dpad.style.setProperty('--thumb-x','0px');dpad.style.setProperty('--thumb-y','0px');
+  for(const button of dpad.querySelectorAll<HTMLButtonElement>('[data-dir]'))button.classList.remove('active');
+}
+function updateDpad(clientX:number,clientY:number){
+  const rect=dpad.getBoundingClientRect();
+  const x=(clientX-rect.left-rect.width/2)/(rect.width/2);
+  const y=(clientY-rect.top-rect.height/2)/(rect.height/2);
+  const length=Math.hypot(x,y);
+  const nx=length?x/length:0,ny=length?y/length:0;
+  touchDirections.clear();touchFacing=null;
+  if(length>0.18){
+    if(nx>0.33)touchDirections.add('right');else if(nx< -0.33)touchDirections.add('left');
+    if(ny>0.33)touchDirections.add('down');else if(ny< -0.33)touchDirections.add('up');
+    touchFacing=Math.abs(x)>Math.abs(y)?(x>0?'right':'left'):(y>0?'down':'up');
+  }
+  const thumbTravel=Math.min(length,1)*17;
+  dpad.style.setProperty('--thumb-x',`${nx*thumbTravel}px`);
+  dpad.style.setProperty('--thumb-y',`${ny*thumbTravel}px`);
+  for(const button of dpad.querySelectorAll<HTMLButtonElement>('[data-dir]'))button.classList.toggle('active',touchDirections.has(button.dataset.dir as Direction));
+}
+function isHeld(direction:Direction){
+  if(touchDirections.has(direction))return true;
+  for(const code of heldKeys)if(keyMap[code]===direction)return true;
+  return false;
+}
+function inputFacing():Direction{
+  if(touchFacing)return touchFacing;
+  for(const code of Array.from(heldKeys).reverse())if(keyMap[code])return keyMap[code];
+  return game.player.facing;
+}
 function placeBomb(){if(game.placeBomb()){beep(460,0.09,'triangle',0.025);updateHud();}}
 window.addEventListener('keydown',e=>{
-  if(keyMap[e.code]){e.preventDefault();held.add(keyMap[e.code]);}
+  if(keyMap[e.code]){e.preventDefault();heldKeys.add(e.code);}
   if(e.code==='Space'){e.preventDefault();if(!e.repeat)placeBomb();}
   if(e.code==='KeyP'||e.code==='Escape'){e.preventDefault();game.togglePause();showToast(game.status==='paused'?'PAUSIERT':'WEITER GEHT’S');updateHud();}
 });
-window.addEventListener('keyup',e=>{if(keyMap[e.code])held.delete(keyMap[e.code]);});
-window.addEventListener('blur',()=>held.clear());
-for(const button of document.querySelectorAll<HTMLButtonElement>('[data-dir]')){
-  const direction=button.dataset.dir as Direction;
-  button.addEventListener('pointerdown',e=>{e.preventDefault();held.add(direction);button.setPointerCapture(e.pointerId);});
-  button.addEventListener('pointerup',()=>held.delete(direction));button.addEventListener('pointercancel',()=>held.delete(direction));
+window.addEventListener('keyup',e=>{if(keyMap[e.code])heldKeys.delete(e.code);});
+window.addEventListener('blur',()=>{heldKeys.clear();resetDpad();});
+dpad.addEventListener('pointerdown',e=>{
+  if(padPointer!==null||e.button!==0)return;
+  e.preventDefault();padPointer=e.pointerId;dpad.setPointerCapture(e.pointerId);updateDpad(e.clientX,e.clientY);
+});
+dpad.addEventListener('pointermove',e=>{if(e.pointerId===padPointer){e.preventDefault();updateDpad(e.clientX,e.clientY);}});
+for(const eventName of ['pointerup','pointercancel','lostpointercapture'])
+  dpad.addEventListener(eventName,e=>{if((e as PointerEvent).pointerId===padPointer)resetDpad();});
+for(const button of dpad.querySelectorAll<HTMLButtonElement>('[data-dir]'))
+  button.addEventListener('click',e=>{
+    if(e.detail!==0)return;
+    const direction=button.dataset.dir as Direction;
+    const dx=Number(direction==='right')-Number(direction==='left');
+    const dy=Number(direction==='down')-Number(direction==='up');
+    game.move(dx,dy,0.1,direction);
+  });
+const touchBomb=document.querySelector<HTMLButtonElement>('#touch-bomb')!;
+touchBomb.addEventListener('pointerdown',e=>{e.preventDefault();touchBomb.classList.add('active');placeBomb();touchBomb.setPointerCapture(e.pointerId);});
+for(const eventName of ['pointerup','pointercancel','lostpointercapture'])touchBomb.addEventListener(eventName,()=>touchBomb.classList.remove('active'));
+touchBomb.addEventListener('click',e=>{if(e.detail===0)placeBomb();});
+for(const target of [stage,mobileControls]){
+  for(const eventName of ['gesturestart','gesturechange'])target.addEventListener(eventName,e=>e.preventDefault(),{passive:false});
+  target.addEventListener('dblclick',e=>e.preventDefault());
 }
-document.querySelector('#touch-bomb')!.addEventListener('pointerdown',e=>{e.preventDefault();placeBomb();});
 
 let last=performance.now(),accumulator=0,lastStatus=game.status,footstepTimer=0;
 function frame(now:number){
@@ -367,9 +421,9 @@ function frame(now:number){
   const dt=Math.min((now-last)/1000,0.1);last=now;accumulator+=dt;footstepTimer=Math.max(0,footstepTimer-dt);
   playerMoving=false;
   while(accumulator>=1/60){
-    const dx=Number(held.has('right'))-Number(held.has('left'));
-    const dy=Number(held.has('down'))-Number(held.has('up'));
-    const facing=Array.from(held).at(-1)??game.player.facing;
+    const dx=Number(isHeld('right'))-Number(isHeld('left'));
+    const dy=Number(isHeld('down'))-Number(isHeld('up'));
+    const facing=inputFacing();
     playerMoving=game.move(dx,dy,1/60,facing)||playerMoving;
     game.update(1/60);accumulator-=1/60;
   }

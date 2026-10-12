@@ -18,3 +18,37 @@
 .character-option img{display:block;width:52px;height:52px;object-fit:contain;image-rendering:pixelated}
 @media(max-width:760px){.stage{height:clamp(400px,56vh,480px)}#intro .intro-card{padding:14px 18px}.intro-icon{display:none}#intro .intro-card h1{font-size:44px}.intro-copy{margin:8px auto 12px;line-height:1.35}.character-picker{margin-bottom:12px}.character-picker legend{font-size:12px;margin-bottom:6px}.character-options{gap:5px}.character-option{min-height:58px;padding:3px;gap:2px;flex-direction:column;font-size:13px}.character-option img{width:39px;height:39px}.quick-controls{margin-top:9px}.primary-button{min-height:48px}}
 @media(max-width:390px){.stage{height:400px;min-height:0}#intro{padding:8px}#intro .intro-card{padding:12px}#intro .intro-card h1{font-size:39px}.intro-copy{font-size:11px;margin:7px auto 9px}.character-option{min-height:54px}.character-option img{width:35px;height:35px}.quick-controls{font-size:9px}}
+
+/* Touch game controls */
+.stage.game-active,.mobile-controls{touch-action:none;overscroll-behavior:contain}
+#intro{display:flex;flex-direction:column;align-items:center;justify-content:safe center;touch-action:pan-y;overscroll-behavior:contain}
+#intro .intro-card{flex:none}
+@media(max-width:760px){
+  #app{min-height:100dvh;padding-inline:max(10px,env(safe-area-inset-left)) max(10px,env(safe-area-inset-right))}
+  .topbar{height:54px;flex:none}
+  main{gap:8px;padding:8px 0 0;flex:none}
+  .hud{height:52px}
+  .stage{height:clamp(260px,calc(100dvh - 300px),410px);min-height:0}
+  .stage-footer,.page-footer{display:none}
+  .side-panel{padding:0 0 max(6px,env(safe-area-inset-bottom))}
+  .mobile-controls{display:flex;justify-content:space-between;align-items:center;width:100%;height:146px;max-width:440px;margin:auto;padding:0 10px;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+  .dpad{position:relative;display:block;flex:none;width:144px;height:144px;border:1px solid #647d9c;border-radius:50%;background:radial-gradient(circle at 40% 35%,#344c70,#1c2c4a 75%);box-shadow:inset 0 2px #ffffff25,0 10px 25px #050d1f88;touch-action:none;user-select:none;-webkit-user-select:none}
+  .dpad button{position:absolute;display:grid;place-items:center;width:49px;height:49px;padding:0;border:1px solid #849fbc;border-bottom:3px solid #233a58;border-radius:13px;background:#3d5b7d;color:#e5f7ff;font-size:22px;line-height:1;touch-action:none;box-shadow:inset 0 1px #ffffff35}
+  .dpad .dpad-up{top:5px;left:47px}.dpad .dpad-left{top:47px;left:5px}.dpad .dpad-right{top:47px;right:5px}.dpad .dpad-down{bottom:5px;left:47px}
+  .dpad button.active{background:#66dccc;color:#12364b;border-color:#9af9e8;box-shadow:0 0 15px #5ce4d888,inset 0 1px #ffffff77}
+  .dpad-center{position:absolute;left:50%;top:50%;width:43px;height:43px;border:3px solid #547294;border-radius:50%;background:radial-gradient(circle at 35% 30%,#9eb5ce,#536c8d);box-shadow:0 3px 8px #101c36b8,inset 0 2px #ffffff77;transform:translate(calc(-50% + var(--thumb-x,0px)),calc(-50% + var(--thumb-y,0px)));pointer-events:none;transition:transform .04s linear}
+  .mobile-controls .touch-bomb{width:91px;height:91px;flex:none;border:1px solid #ffc397;border-bottom:5px solid #a75251;border-radius:50%;background:linear-gradient(150deg,#f4a181,#d96a58);color:white;font-family:'Barlow Condensed',Impact,sans-serif;font-size:19px;line-height:1.08;font-weight:800;box-shadow:0 9px 22px #a5334e66;touch-action:none}
+  .mobile-controls .touch-bomb.active{transform:scale(.94);filter:brightness(1.12)}
+}
+@media(max-width:760px) and (max-height:700px){
+  #intro .intro-card{padding:9px 12px}
+  #intro .intro-card h1{font-size:36px}
+  #intro .overline{font-size:11px}
+  #intro .intro-copy,#intro .quick-controls{display:none}
+  #intro .character-picker{margin-bottom:7px}
+  #intro .character-picker legend{font-size:11px;margin-bottom:4px}
+  #intro .character-option{min-height:48px}
+  #intro .character-option img{width:30px;height:30px}
+  #intro .character-option span{font-size:11px}
+  #intro .primary-button{min-height:43px;font-size:18px}
+}
