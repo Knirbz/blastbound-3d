@@ -25,13 +25,24 @@ npm test
 npm run build
 ```
 
-## Cloudflare Pages
+## Veröffentlichung
 
-Dieses Repository ist für Cloudflare Pages mit GitHub-Anbindung vorbereitet. Einstellungen:
+- Quellcode: https://github.com/Knirbz/blastbound-3d
+- Spiel: https://blastbound-3d.pages.dev
 
-- Produktionszweig: `main`
-- Build-Befehl: `npm run build`
-- Ausgabeordner: `dist`
-- Node.js: 22 (`.node-version`)
+Die Seite wird auf Cloudflare Pages per Direct Upload veröffentlicht. Das GitHub-Repository enthält den Quellcode; ein Push allein veröffentlicht noch keine neue Version. Nach Änderungen:
 
-Nach der GitHub-Anbindung erstellt Cloudflare Pages bei jedem Push auf `main` einen neuen Produktions-Build.
+```sh
+npm ci
+npm test
+npm run build
+```
+
+Für die Veröffentlichung aus PowerShell:
+
+```powershell
+$env:CLOUDFLARE_ACCOUNT_ID = '8a7e885c48e5eaaa7f46e9a9480eefdd'
+npx wrangler pages deploy dist --project-name blastbound-3d --branch main
+```
+
+Dafür ist eine lokale Cloudflare-Anmeldung mit `npx wrangler login` erforderlich. Ein GitHub-Secret wird nicht benötigt. Node.js 22 ist in `.node-version` festgelegt.
