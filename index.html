@@ -48,6 +48,15 @@
                 <p class="quick-controls">WASD / Pfeiltasten bewegen · Leertaste legt Bombe</p>
               </div>
             </div>
+            <div id="pause-menu" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="pause-title">
+              <div class="intro-card pause-card">
+                <p class="overline">SPIEL PAUSIERT</p>
+                <h2 id="pause-title">KURZE PAUSE</h2>
+                <p id="pause-mode" class="pause-mode"></p>
+                <button id="resume-button" class="primary-button" type="button">WEITER SPIELEN <span>▶</span></button>
+                <button id="pause-menu-button" class="secondary-button" type="button">FIGUR / MODUS ÄNDERN</button>
+              </div>
+            </div>
             <div id="result" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="result-title">
               <div class="intro-card result-card"><p id="result-kicker" class="overline"></p><h2 id="result-title"></h2><p id="result-copy" class="intro-copy"></p><button id="restart-button" class="primary-button" type="button">NOCH MAL SPIELEN <span>↻</span></button><button id="menu-button" class="secondary-button" type="button">FIGUR / MODUS ÄNDERN</button></div>
             </div>

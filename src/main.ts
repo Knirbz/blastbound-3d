@@ -3,12 +3,12 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { Game, WIDTH, HEIGHT, BOMB_FUSE, type BlastKind, type BlastCell, type Difficulty, type Direction, type Point, type UpgradeType } from './logic';
-import { makeBlastFlame, makeBlastCore } from './blastArt';
 import './style.css';
 
 const stage = document.querySelector<HTMLElement>('#stage')!;
 const canvas = document.querySelector<HTMLCanvasElement>('#game-canvas')!;
 const intro = document.querySelector<HTMLElement>('#intro')!;
+const pauseMenu = document.querySelector<HTMLElement>('#pause-menu')!;
 const result = document.querySelector<HTMLElement>('#result')!;
 const toast = document.querySelector<HTMLElement>('#toast')!;
 const characterOptions = document.querySelector<HTMLElement>('#character-options')!;
@@ -20,6 +20,7 @@ const difficultyDescriptions:Record<Difficulty,string>={
   medium:'Aktive Bots, häufiger Bomben.',
   hard:'Schnelle Bots mit stärkeren Bomben.',
 };
+const difficultyNames:Record<Difficulty,string>={training:'Training',easy:'Leicht',medium:'Mittel',hard:'Schwer'};
 const characters = [
   {id:'character-female-a',name:'Lina'},
   {id:'character-female-b',name:'Mira'},
@@ -83,20 +84,6 @@ const particleTexture=(name:string)=>{
   return texture;
 };
 const fxTextures={fire:particleTexture('fire_01'),flame:particleTexture('flame_02'),smoke:particleTexture('smoke_05'),spark:particleTexture('spark_05'),scorch:particleTexture('scorch_01'),scratch:particleTexture('scratch_01'),dirt:particleTexture('dirt_02'),flare:particleTexture('flare_01')};
-const explosionJetTexture=textureLoader.load('/assets/vfx/explosion-jet.png');
-explosionJetTexture.colorSpace=THREE.SRGBColorSpace;
-const blastFlames:Record<BlastKind,THREE.Texture[]>={
-  normal:[explosionJetTexture,explosionJetTexture,explosionJetTexture],
-  powered:[0,1,2].map(variant=>makeBlastFlame('powered',variant)),
-  chain:[0,1,2].map(variant=>makeBlastFlame('chain',variant)),
-};
-const explosionCoreTexture=textureLoader.load('/assets/vfx/explosion-core.png');
-explosionCoreTexture.colorSpace=THREE.SRGBColorSpace;
-const blastCores:Record<BlastKind,THREE.Texture>={
-  normal:explosionCoreTexture,
-  powered:makeBlastCore('powered'),
-  chain:makeBlastCore('chain'),
-};
 const fxMaterial=(texture:THREE.Texture,color:string,opacity=1,additive=true)=>new THREE.SpriteMaterial({map:texture,color,transparent:true,opacity,blending:additive?THREE.AdditiveBlending:THREE.NormalBlending,depthWrite:false});
 const portalMat = new THREE.MeshStandardMaterial({color:'#76dfff',emissive:'#18baf0',emissiveIntensity:2.7,metalness:0.35,roughness:0.2});
 const upgradeMats:Record<UpgradeType,THREE.MeshStandardMaterial>={
@@ -189,53 +176,55 @@ function disposeBombObject(object:THREE.Object3D){
   ((object.userData.warningRing as THREE.Mesh).material as THREE.Material).dispose();
   (object.userData.fuseSpark as THREE.Sprite).material.dispose();
 }
-type FireParts={marker:THREE.Mesh;ground:THREE.Mesh;ribbon:THREE.Mesh;hot:THREE.Mesh;outer:THREE.Sprite;arc:THREE.Sprite|null;chargeRing:THREE.Mesh|null};
-function flameShapeGeometry(center:boolean){
-  const shape=new THREE.Shape();
-  if(center){
-    for(let i=0;i<16;i++){
-      const angle=i*Math.PI/8,r=i%2===0?0.53:0.39;
-      const x=Math.cos(angle)*r,y=Math.sin(angle)*r;
-      if(i===0)shape.moveTo(x,y);else shape.lineTo(x,y);
-    }
-    shape.closePath();
-  }else{
-    shape.moveTo(-0.57,-0.2);
-    shape.bezierCurveTo(-0.24,-0.34,0.03,-0.25,0.2,-0.31);
-    shape.lineTo(0.59,-0.08);
-    shape.lineTo(0.48,0.09);
-    shape.bezierCurveTo(0.13,0.18,-0.18,0.35,-0.55,0.21);
-    shape.closePath();
+type FireParts={marker:THREE.Mesh;ground:THREE.Mesh;flame:THREE.Mesh<THREE.PlaneGeometry,THREE.ShaderMaterial>;smoke:THREE.Sprite;chargeRing:THREE.Mesh|null};
+const flameVertexShader=`
+  varying vec2 vUv;
+  void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}
+`;
+const flameFragmentShader=`
+  varying vec2 vUv;
+  uniform vec3 uEdge;
+  uniform vec3 uCore;
+  uniform float uTime;
+  uniform float uOpacity;
+  uniform float uCenter;
+  uniform float uSeed;
+  void main(){
+    vec2 p=(vUv-0.5)*2.0;
+    float wave=0.065*sin(p.x*18.0-uTime*19.0+uSeed)+0.035*sin(p.x*37.0+uTime*28.0+uSeed*1.7);
+    float width=0.6-0.1*abs(p.x)+wave;
+    float lane=1.0-smoothstep(width-0.13,width+0.05,abs(p.y));
+    lane*=1.0-smoothstep(0.88,1.08,abs(p.x));
+    float radius=length(p*vec2(1.0,1.05));
+    float burst=1.0-smoothstep(0.65+wave,0.94+wave,radius);
+    float shape=mix(lane,burst,uCenter);
+    float center=mix(1.0-smoothstep(0.05,0.35,abs(p.y)),1.0-smoothstep(0.12,0.65,radius),uCenter);
+    float pulse=0.82+0.18*sin(uTime*25.0+p.x*13.0+uSeed);
+    vec3 color=mix(uEdge,uCore,0.2+0.75*center);
+    gl_FragColor=vec4(color,shape*uOpacity*pulse);
   }
-  return new THREE.ShapeGeometry(shape);
-}
+`;
 function fireObject(kind:BlastKind,cell:BlastCell|undefined){
   const g=new THREE.Group();
   const palette=blastPalette[kind];
+  const center=!cell?.direction;
   // The full danger footprint is visible from the same frame in which the game applies damage.
-  const marker=mesh(new THREE.PlaneGeometry(0.97,0.97),new THREE.MeshBasicMaterial({color:palette.edge,transparent:true,opacity:0.3,depthWrite:false,side:THREE.DoubleSide}),false);
+  const marker=mesh(new THREE.PlaneGeometry(0.96,0.96),new THREE.MeshBasicMaterial({color:palette.edge,transparent:true,opacity:0.17,depthWrite:false,side:THREE.DoubleSide}),false);
   marker.rotation.x=-Math.PI/2;marker.position.y=0.016;g.add(marker);
-  const ground=mesh(new THREE.PlaneGeometry(1.12,1.12),new THREE.MeshBasicMaterial({map:fxTextures.fire,color:palette.edge,transparent:true,opacity:0.7,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide}),false);
+  const ground=mesh(new THREE.PlaneGeometry(1.12,1.12),new THREE.MeshBasicMaterial({map:fxTextures.fire,color:palette.edge,transparent:true,opacity:0.5,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide}),false);
   ground.rotation.x=-Math.PI/2;ground.position.y=0.027;g.add(ground);
   const angle=cell?.direction==='up'?-Math.PI/2:cell?.direction==='down'?Math.PI/2:cell?.direction==='left'?Math.PI:0;
-  const ribbon=mesh(flameShapeGeometry(!cell?.direction),new THREE.MeshBasicMaterial({color:palette.edge,transparent:true,opacity:0.85,depthWrite:false,side:THREE.DoubleSide}),false);
-  ribbon.rotation.set(-Math.PI/2,0,angle);ribbon.position.y=0.039;g.add(ribbon);
-  const hot=mesh(flameShapeGeometry(!cell?.direction),new THREE.MeshBasicMaterial({color:palette.core,transparent:true,opacity:0.85,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide}),false);
-  hot.rotation.set(-Math.PI/2,0,angle);hot.position.y=0.048;hot.scale.setScalar(0.63);g.add(hot);
-  const variant=cell?Math.abs(cell.x*17+cell.y*31)%3:1;
-  const outer=new THREE.Sprite(new THREE.SpriteMaterial({map:cell?.direction?blastFlames[kind][variant]:blastCores[kind],transparent:true,alphaTest:0.03,depthWrite:false}));
-  outer.position.set(0,0.77,0);outer.scale.set(1.65,1.67,1);g.add(outer);
-  let arc:THREE.Sprite|null=null;
-  if(kind==='chain'){
-    arc=new THREE.Sprite(fxMaterial(fxTextures.spark,'#f4c9ff',0.84));
-    arc.position.set(0,0.55,0);arc.scale.set(0.92,1.02,1);g.add(arc);
-  }
+  const material=new THREE.ShaderMaterial({vertexShader:flameVertexShader,fragmentShader:flameFragmentShader,uniforms:{uEdge:{value:new THREE.Color(palette.edge)},uCore:{value:new THREE.Color(palette.core)},uTime:{value:0},uOpacity:{value:0},uCenter:{value:center?1:0},uSeed:{value:Math.abs((cell?.x??0)*13+(cell?.y??0)*7)%11}},transparent:true,depthWrite:false,side:THREE.DoubleSide});
+  const flame=new THREE.Mesh(new THREE.PlaneGeometry(center?1.1:1.28,center?1.1:0.85),material);
+  flame.rotation.set(-Math.PI/2,0,angle);flame.position.y=0.055;g.add(flame);
+  const smoke=new THREE.Sprite(fxMaterial(fxTextures.smoke,'#49556a',0,false));
+  smoke.position.y=0.43;smoke.scale.set(0.76,0.63,1);g.add(smoke);
   let chargeRing:THREE.Mesh|null=null;
   if(kind==='powered'){
     chargeRing=mesh(new THREE.TorusGeometry(0.32,0.045,7,24),new THREE.MeshBasicMaterial({color:palette.core,transparent:true,opacity:0.76,blending:THREE.AdditiveBlending,depthWrite:false}),false);
     chargeRing.rotation.x=Math.PI/2;chargeRing.position.y=0.16;g.add(chargeRing);
   }
-  g.userData={kind,parts:{marker,ground,ribbon,hot,outer,arc,chargeRing} satisfies FireParts,cell};
+  g.userData={kind,parts:{marker,ground,flame,smoke,chargeRing} satisfies FireParts,cell};
   return g;
 }
 function disposeFireObject(object:THREE.Object3D){
@@ -595,26 +584,17 @@ function syncDynamic(){
     const distance=cell?.distance??0;
     const opening=Math.max(0,Math.min(1,(age-distance*0.035)/0.085));
     const closing=Math.min(1,ttl/0.14);
-    const flicker=0.88+0.12*Math.sin(performance.now()*0.037+distance*2.1);
     const parts=obj.userData.parts as FireParts;
-    (parts.marker.material as THREE.MeshBasicMaterial).opacity=(0.32+0.2*opening)*closing;
-    (parts.ground.material as THREE.MeshBasicMaterial).opacity=(0.45+0.5*opening)*closing;
-    (parts.ribbon.material as THREE.MeshBasicMaterial).opacity=(0.5+0.4*opening)*closing;
-    (parts.hot.material as THREE.MeshBasicMaterial).opacity=(0.35+0.43*opening)*closing;
-    parts.ribbon.scale.setScalar(0.82+0.18*opening);
-    parts.hot.scale.setScalar(0.48+0.21*opening);
-    parts.ground.scale.setScalar(0.95+0.25*opening);
-    parts.ground.rotation.z=age*(kind==='powered'?3:kind==='chain'?2.4:0.7)+distance*0.75;
-    parts.outer.material.opacity=(0.55+0.45*opening)*closing;
-    const isCore=!cell?.direction;
-    const normalJet=kind==='normal'&&!isCore;
-    parts.outer.scale.set(isCore?1.35+1.05*opening:normalJet?1.35+0.75*opening:0.9+0.38*opening,isCore?1.35+1.05*opening:normalJet?1.4+0.35*opening*flicker:0.95+0.68*opening*flicker,1);
-    parts.outer.position.y=isCore?0.95:normalJet?0.66:0.47+0.32*opening;
-    const directionAngle=normalJet?
-      cell?.direction==='right'?0:cell?.direction==='left'?Math.PI:cell?.direction==='up'?Math.PI/2:-Math.PI/2:
-      cell?.direction==='right'?-Math.PI/2:cell?.direction==='left'?Math.PI/2:cell?.direction==='down'?Math.PI:0;
-    parts.outer.material.rotation=directionAngle+(kind==='chain'?-1:1)*Math.sin(age*17+distance*2.4)*0.05;
-    if(parts.arc){parts.arc.material.opacity=(0.18+0.78*opening)*closing*(Math.sin(age*68+distance)>0?1:0.28);parts.arc.material.rotation=age*7+distance;}
+    (parts.marker.material as THREE.MeshBasicMaterial).opacity=(0.17+0.08*opening)*closing;
+    (parts.ground.material as THREE.MeshBasicMaterial).opacity=(0.35+0.25*opening)*closing;
+    parts.ground.scale.setScalar(0.9+0.15*opening);
+    parts.ground.rotation.z=age*0.6+distance*0.5;
+    parts.flame.material.uniforms.uTime.value=age;
+    parts.flame.material.uniforms.uOpacity.value=(0.35+0.65*opening)*closing;
+    parts.flame.scale.setScalar(0.85+0.15*opening);
+    parts.smoke.material.opacity=0.22*Math.max(0,Math.min(1,(age-0.18)/0.12))*closing;
+    parts.smoke.scale.set(0.76+age*0.45,0.63+age*0.35,1);
+    parts.smoke.position.y=0.43+age*0.3;
     if(parts.chargeRing){
       (parts.chargeRing.material as THREE.MeshBasicMaterial).opacity=(0.3+0.55*opening)*closing;
       parts.chargeRing.scale.setScalar(0.75+0.55*Math.abs(Math.sin(age*22)));
@@ -697,26 +677,36 @@ function updateHud(){
   document.querySelector('#bombs')!.textContent=`${game.player.capacity-game.playerBombCount} / ${game.player.capacity}`;
   const seconds=Math.floor(game.elapsed);document.querySelector('#timer')!.textContent=`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;
   const pause=document.querySelector<HTMLButtonElement>('#pause-button')!;pause.innerHTML=game.status==='paused'?'▶ <span>WEITER</span>':'Ⅱ <span>PAUSE</span>';
+  pause.setAttribute('aria-label',game.status==='paused'?'Spiel fortsetzen':'Spiel pausieren');
 }
 function showResult(){
   const win=game.status==='won';
   document.querySelector('#result-kicker')!.textContent=win?'ARENA GESCHAFFT':'RUNDE VORBEI';
   document.querySelector('#result-title')!.textContent=win?'STARK GESPIELT!':'KABOOM!';
   document.querySelector('#result-copy')!.textContent=win?`Alle Gegner besiegt in ${Math.floor(game.elapsed)} Sekunden. Bereit für eine neue Runde?`:'Deine Leben sind aufgebraucht. Plane deinen nächsten Fluchtweg und versuch es erneut.';
-  stage.classList.remove('game-active');result.classList.remove('hidden');beep(win?780:180,0.35,'triangle',0.08);
+  stage.classList.remove('game-active');pauseMenu.classList.add('hidden');result.classList.remove('hidden');beep(win?780:180,0.35,'triangle',0.08);
 }
 function start(restart=false){
   if(restart){clearObjects();game.reset();playerObject.position.copy(world(game.player));syncStatic();}
-  game.start();stage.classList.add('game-active');intro.classList.add('hidden');result.classList.add('hidden');updateHud();
+  game.start();stage.classList.add('game-active');intro.classList.add('hidden');pauseMenu.classList.add('hidden');result.classList.add('hidden');updateHud();
 }
 function returnToMenu(){
   clearObjects();game.reset();playerObject.position.copy(world(game.player));syncStatic();
-  stage.classList.remove('game-active');result.classList.add('hidden');intro.classList.remove('hidden');updateHud();
+  stage.classList.remove('game-active');pauseMenu.classList.add('hidden');result.classList.add('hidden');intro.classList.remove('hidden');updateHud();
+}
+function togglePause(){
+  game.togglePause();
+  const paused=game.status==='paused';
+  pauseMenu.classList.toggle('hidden',!paused);
+  if(paused)document.querySelector('#pause-mode')!.textContent=`Aktueller Modus: ${difficultyNames[game.difficulty]}`;
+  updateHud();
 }
 document.querySelector('#start-button')!.addEventListener('click',()=>start());
 document.querySelector('#restart-button')!.addEventListener('click',()=>start(true));
 document.querySelector('#menu-button')!.addEventListener('click',returnToMenu);
-document.querySelector('#pause-button')!.addEventListener('click',()=>{game.togglePause();showToast(game.status==='paused'?'PAUSIERT':'WEITER GEHT’S');updateHud();});
+document.querySelector('#pause-button')!.addEventListener('click',togglePause);
+document.querySelector('#resume-button')!.addEventListener('click',togglePause);
+document.querySelector('#pause-menu-button')!.addEventListener('click',returnToMenu);
 const keyMap:Record<string,Direction>={ArrowUp:'up',KeyW:'up',ArrowDown:'down',KeyS:'down',ArrowLeft:'left',KeyA:'left',ArrowRight:'right',KeyD:'right'};
 const heldKeys=new Set<string>();
 const touchDirections=new Set<Direction>();
@@ -760,7 +750,7 @@ function placeBomb(){if(game.placeBomb()){beep(460,0.09,'triangle',0.025);update
 window.addEventListener('keydown',e=>{
   if(keyMap[e.code]){e.preventDefault();heldKeys.add(e.code);}
   if(e.code==='Space'){e.preventDefault();if(!e.repeat)placeBomb();}
-  if(e.code==='KeyP'||e.code==='Escape'){e.preventDefault();game.togglePause();showToast(game.status==='paused'?'PAUSIERT':'WEITER GEHT’S');updateHud();}
+  if(e.code==='KeyP'||e.code==='Escape'){e.preventDefault();if(!e.repeat)togglePause();}
 });
 window.addEventListener('keyup',e=>{if(keyMap[e.code])heldKeys.delete(e.code);});
 window.addEventListener('blur',()=>{heldKeys.clear();resetDpad();});
@@ -805,11 +795,11 @@ function frame(now:number){
   for(const event of game.drainEvents()){
     if(event.type==='explode'){
       const kind=event.kind??'normal',palette=blastPalette[kind];
-      for(const cell of event.cells??[])firePatterns.set(key(cell.x,cell.y),cell);
-      burst(event.x,event.y,palette.spark,kind==='normal'?10:15);
+      for(const cell of event.cells??[]){firePatterns.set(key(cell.x,cell.y),cell);if(cell.distance>0)burst(cell.x,cell.y,palette.spark,2);}
+      burst(event.x,event.y,palette.spark,kind==='normal'?8:12);
       shockwave(event.x,event.y,palette.edge,kind==='powered'?1.2:1);
-      transientSprite(event.x,event.y,fxTextures.flare,palette.core,{height:1.02,duration:0.16,opacity:0.9,startScale:0.5,endScale:2.55});
-      transientSprite(event.x,event.y,fxTextures.smoke,'#64728a',{height:0.83,delay:0.18,duration:0.86,opacity:0.42,startScale:0.55,endScale:1.45,velocity:new THREE.Vector3(0,0.4,0),additive:false});
+      transientSprite(event.x,event.y,fxTextures.flare,palette.core,{height:0.72,duration:0.13,opacity:0.65,startScale:0.35,endScale:1.35});
+      transientSprite(event.x,event.y,fxTextures.smoke,'#536078',{height:0.72,delay:0.24,duration:0.62,opacity:0.3,startScale:0.4,endScale:1.08,velocity:new THREE.Vector3(0,0.3,0),additive:false});
       markScorch(event.x,event.y);
       cameraJolt=Math.min(0.13,cameraJolt+(kind==='powered'?0.085:0.055));
       stage.classList.remove('blast-impact');void stage.offsetWidth;

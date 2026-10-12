@@ -189,6 +189,24 @@ export class Game {
     enemy.escapePath=route;
     return true;
   }
+  private pathDistancesToPlayer() {
+    const distances=new Map<string,number>();
+    const start={x:Math.round(this.player.x),y:Math.round(this.player.y),cost:0};
+    const frontier=[start];
+    while(frontier.length){
+      frontier.sort((a,b)=>a.cost-b.cost);
+      const node=frontier.shift()!,key=Game.key(node.x,node.y);
+      if(distances.has(key))continue;
+      distances.set(key,node.cost);
+      for(const dir of directionList){
+        const d=dirs[dir],x=node.x+d.x,y=node.y+d.y,tile=this.tile(x,y);
+        if(tile===1||distances.has(Game.key(x,y)))continue;
+        // A crate is reachable after a bomb, but costs more than an open detour.
+        frontier.push({x,y,cost:node.cost+(this.tile(node.x,node.y)===2?4:1)});
+      }
+    }
+    return distances;
+  }
   private moveEnemy(enemy: Enemy) {
     const current=Game.key(Math.round(enemy.x),Math.round(enemy.y));
     if(!enemy.escapePath.length&&this.bombs.some(b=>this.blastFootprint(b.x,b.y,b.range).has(current)))
@@ -206,7 +224,12 @@ export class Game {
     const safe=choices.filter(dir=>{const d=dirs[dir],x=Math.round(enemy.x)+d.x,y=Math.round(enemy.y)+d.y;return !this.bombs.some(b=>this.blastFootprint(b.x,b.y,b.range).has(Game.key(x,y)));});
     if(!safe.length&&!this.bombs.some(b=>this.blastFootprint(b.x,b.y,b.range).has(current)))return;
     const available=safe.length?safe:choices;
-    const direct = available.map(dir => { const d=dirs[dir], x=enemy.x+d.x, y=enemy.y+d.y; return {dir, score: Math.abs(x-this.player.x)+Math.abs(y-this.player.y)+this.rand()*3}; });
+    const distances=this.difficulty==='hard'?this.pathDistancesToPlayer():null;
+    const direct = available.map(dir => {
+      const d=dirs[dir],x=enemy.x+d.x,y=enemy.y+d.y;
+      const distance=distances?.get(Game.key(Math.round(x),Math.round(y)))??Math.abs(x-this.player.x)+Math.abs(y-this.player.y);
+      return {dir,score:distance+this.rand()*(distances?0.35:3)};
+    });
     direct.sort((a,b)=>a.score-b.score);
     const chosen = this.rand() < difficultySettings[this.difficulty].focus ? direct[0].dir : available[Math.floor(this.rand()*available.length)];
     enemy.targetX = enemy.x + dirs[chosen].x; enemy.targetY = enemy.y + dirs[chosen].y; enemy.facing = chosen;
