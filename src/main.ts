@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
-import { Game, WIDTH, HEIGHT, type BlastKind, type BlastCell, type Direction, type Point, type UpgradeType } from './logic';
+import { Game, WIDTH, HEIGHT, BOMB_FUSE, type BlastKind, type BlastCell, type Direction, type Point, type UpgradeType } from './logic';
+import { makeBlastFlame, makeBlastCore } from './blastArt';
 import './style.css';
 
 const stage = document.querySelector<HTMLElement>('#stage')!;
@@ -70,6 +71,20 @@ const particleTexture=(name:string)=>{
   return texture;
 };
 const fxTextures={fire:particleTexture('fire_01'),flame:particleTexture('flame_02'),smoke:particleTexture('smoke_05'),spark:particleTexture('spark_05'),scorch:particleTexture('scorch_01'),scratch:particleTexture('scratch_01'),dirt:particleTexture('dirt_02'),flare:particleTexture('flare_01')};
+const explosionJetTexture=textureLoader.load('/assets/vfx/explosion-jet.png');
+explosionJetTexture.colorSpace=THREE.SRGBColorSpace;
+const blastFlames:Record<BlastKind,THREE.Texture[]>={
+  normal:[explosionJetTexture,explosionJetTexture,explosionJetTexture],
+  powered:[0,1,2].map(variant=>makeBlastFlame('powered',variant)),
+  chain:[0,1,2].map(variant=>makeBlastFlame('chain',variant)),
+};
+const explosionCoreTexture=textureLoader.load('/assets/vfx/explosion-core.png');
+explosionCoreTexture.colorSpace=THREE.SRGBColorSpace;
+const blastCores:Record<BlastKind,THREE.Texture>={
+  normal:explosionCoreTexture,
+  powered:makeBlastCore('powered'),
+  chain:makeBlastCore('chain'),
+};
 const fxMaterial=(texture:THREE.Texture,color:string,opacity=1,additive=true)=>new THREE.SpriteMaterial({map:texture,color,transparent:true,opacity,blending:additive?THREE.AdditiveBlending:THREE.NormalBlending,depthWrite:false});
 const portalMat = new THREE.MeshStandardMaterial({color:'#76dfff',emissive:'#18baf0',emissiveIntensity:2.7,metalness:0.35,roughness:0.2});
 const upgradeMats:Record<UpgradeType,THREE.MeshStandardMaterial>={
@@ -162,7 +177,7 @@ function disposeBombObject(object:THREE.Object3D){
   ((object.userData.warningRing as THREE.Mesh).material as THREE.Material).dispose();
   (object.userData.fuseSpark as THREE.Sprite).material.dispose();
 }
-type FireParts={marker:THREE.Mesh;ground:THREE.Mesh;ribbon:THREE.Mesh;hot:THREE.Mesh;outer:THREE.Sprite;inner:THREE.Sprite;arc:THREE.Sprite|null;chargeRing:THREE.Mesh|null};
+type FireParts={marker:THREE.Mesh;ground:THREE.Mesh;ribbon:THREE.Mesh;hot:THREE.Mesh;outer:THREE.Sprite;arc:THREE.Sprite|null;chargeRing:THREE.Mesh|null};
 function flameShapeGeometry(center:boolean){
   const shape=new THREE.Shape();
   if(center){
@@ -195,10 +210,9 @@ function fireObject(kind:BlastKind,cell:BlastCell|undefined){
   ribbon.rotation.set(-Math.PI/2,0,angle);ribbon.position.y=0.039;g.add(ribbon);
   const hot=mesh(flameShapeGeometry(!cell?.direction),new THREE.MeshBasicMaterial({color:palette.core,transparent:true,opacity:0.85,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide}),false);
   hot.rotation.set(-Math.PI/2,0,angle);hot.position.y=0.048;hot.scale.setScalar(0.63);g.add(hot);
-  const outer=new THREE.Sprite(fxMaterial(fxTextures.flame,palette.edge,0.95,false));
-  outer.position.set(0,0.7,0);outer.scale.set(1.75,1.75,1);g.add(outer);
-  const inner=new THREE.Sprite(fxMaterial(fxTextures.fire,palette.core,0.92));
-  inner.position.set(0,0.58,0.015);inner.scale.set(1.25,1.3,1);g.add(inner);
+  const variant=cell?Math.abs(cell.x*17+cell.y*31)%3:1;
+  const outer=new THREE.Sprite(new THREE.SpriteMaterial({map:cell?.direction?blastFlames[kind][variant]:blastCores[kind],transparent:true,alphaTest:0.03,depthWrite:false}));
+  outer.position.set(0,0.77,0);outer.scale.set(1.65,1.67,1);g.add(outer);
   let arc:THREE.Sprite|null=null;
   if(kind==='chain'){
     arc=new THREE.Sprite(fxMaterial(fxTextures.spark,'#f4c9ff',0.84));
@@ -209,7 +223,7 @@ function fireObject(kind:BlastKind,cell:BlastCell|undefined){
     chargeRing=mesh(new THREE.TorusGeometry(0.32,0.045,7,24),new THREE.MeshBasicMaterial({color:palette.core,transparent:true,opacity:0.76,blending:THREE.AdditiveBlending,depthWrite:false}),false);
     chargeRing.rotation.x=Math.PI/2;chargeRing.position.y=0.16;g.add(chargeRing);
   }
-  g.userData={kind,parts:{marker,ground,ribbon,hot,outer,inner,arc,chargeRing} satisfies FireParts,cell};
+  g.userData={kind,parts:{marker,ground,ribbon,hot,outer,arc,chargeRing} satisfies FireParts,cell};
   return g;
 }
 function disposeFireObject(object:THREE.Object3D){
@@ -520,7 +534,7 @@ function syncDynamic(){
   for(const bomb of game.bombs){
     let obj=bombObjects.get(bomb.id);
     if(!obj){obj=bombObject(bomb.range);obj.position.copy(world(bomb));props.add(obj);bombObjects.set(bomb.id,obj);}
-    const age=2.15-bomb.fuse;
+    const age=BOMB_FUSE-bomb.fuse;
     const landing=Math.max(0,1-age/0.13);
     const warning=Math.max(0,Math.min(1,(0.72-bomb.fuse)/0.72));
     const shake=Math.max(0,Math.min(1,(0.26-bomb.fuse)/0.26));
@@ -564,13 +578,15 @@ function syncDynamic(){
     parts.hot.scale.setScalar(0.48+0.21*opening);
     parts.ground.scale.setScalar(0.95+0.25*opening);
     parts.ground.rotation.z=age*(kind==='powered'?3:kind==='chain'?2.4:0.7)+distance*0.75;
-    parts.outer.material.opacity=(0.38+0.6*opening)*closing;
-    parts.outer.scale.set(1.3+0.5*opening,1.25+0.6*opening*flicker,1);
-    parts.outer.position.y=0.63+0.15*opening;
-    parts.inner.material.opacity=(0.3+0.5*opening)*closing;
-    parts.inner.scale.set(0.9+0.4*opening,0.93+0.42*opening*flicker,1);
-    parts.outer.material.rotation=kind==='powered'?age*2.2:kind==='chain'?age*-1.5:Math.sin(age*13+distance)*0.18;
-    parts.inner.material.rotation=kind==='powered'?-age*2.8:0;
+    parts.outer.material.opacity=(0.55+0.45*opening)*closing;
+    const isCore=!cell?.direction;
+    const normalJet=kind==='normal'&&!isCore;
+    parts.outer.scale.set(isCore?1.35+1.05*opening:normalJet?1.35+0.75*opening:0.9+0.38*opening,isCore?1.35+1.05*opening:normalJet?1.4+0.35*opening*flicker:0.95+0.68*opening*flicker,1);
+    parts.outer.position.y=isCore?0.95:normalJet?0.66:0.47+0.32*opening;
+    const directionAngle=normalJet?
+      cell?.direction==='right'?0:cell?.direction==='left'?Math.PI:cell?.direction==='up'?Math.PI/2:-Math.PI/2:
+      cell?.direction==='right'?-Math.PI/2:cell?.direction==='left'?Math.PI/2:cell?.direction==='down'?Math.PI:0;
+    parts.outer.material.rotation=directionAngle+(kind==='chain'?-1:1)*Math.sin(age*17+distance*2.4)*0.05;
     if(parts.arc){parts.arc.material.opacity=(0.18+0.78*opening)*closing*(Math.sin(age*68+distance)>0?1:0.28);parts.arc.material.rotation=age*7+distance;}
     if(parts.chargeRing){
       (parts.chargeRing.material as THREE.MeshBasicMaterial).opacity=(0.3+0.55*opening)*closing;

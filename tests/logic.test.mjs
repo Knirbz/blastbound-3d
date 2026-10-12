@@ -1,6 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Game, PLAYER_SPEED, ENEMY_SPEED } from '../src/logic.ts';
+import { Game, PLAYER_SPEED, ENEMY_SPEED, BOMB_FUSE } from '../src/logic.ts';
+
+test('a placed bomb ticks for the full fuse before exploding', () => {
+  const game = new Game(2); game.start();
+  game.enemies.forEach(enemy=>enemy.alive=false);
+  assert.equal(game.placeBomb(),true);
+  assert.equal(game.bombs[0].fuse,BOMB_FUSE);
+  game.player.x=5; game.player.y=5;
+  for (let i=0;i<27;i++) game.update(0.1);
+  assert.equal(game.bombs.length,1);
+  game.update(0.1); game.update(0.1);
+  assert.equal(game.bombs.length,0);
+  assert.equal(game.drainEvents().some(event=>event.type==='explode'),true);
+});
 
 test('player moves smoothly at the configured speed, including diagonals', () => {
   const game = new Game(2); game.start();

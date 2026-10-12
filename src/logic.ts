@@ -2,6 +2,7 @@ export const WIDTH = 13;
 export const HEIGHT = 11;
 export const PLAYER_SPEED = 3.1; // tiles per second
 export const ENEMY_SPEED = 1.45;
+export const BOMB_FUSE = 2.8;
 export type Tile = 0 | 1 | 2; // floor, stone, crate
 export type Direction = 'up' | 'down' | 'left' | 'right';
 export type Point = { x: number; y: number };
@@ -98,7 +99,7 @@ export class Game {
     const x = Math.round(this.player.x), y = Math.round(this.player.y);
     if (this.tile(x,y) !== 0) return false;
     if (this.bombs.some(b => b.x === x && b.y === y)) return false;
-    this.bombs.push({x,y,fuse:2.15,range:this.player.range,ownerPass:true,id:++this.bombId});
+    this.bombs.push({x,y,fuse:BOMB_FUSE,range:this.player.range,ownerPass:true,id:++this.bombId});
     this.events.push({type:'bomb',x,y});
     return true;
   }
