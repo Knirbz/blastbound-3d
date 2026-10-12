@@ -69,6 +69,10 @@ test('stone and crates stop a cross explosion; the first crate is destroyed', ()
   assert.equal(game.fire.has('4,1'),true);
   assert.equal(game.fire.has('5,1'),false);
   assert.equal(game.fire.has('6,1'),false);
+  const blast=game.drainEvents().find(event=>event.type==='explode');
+  assert.deepEqual(blast.cells.find(cell=>cell.x===2&&cell.y===1),{x:2,y:1,distance:0,direction:null});
+  assert.deepEqual(blast.cells.find(cell=>cell.x===4&&cell.y===1),{x:4,y:1,distance:2,direction:'right'});
+  assert.equal(blast.cells.some(cell=>cell.x===5&&cell.y===1),false);
 });
 
 test('blast chains into another bomb', () => {

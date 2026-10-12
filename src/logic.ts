@@ -9,8 +9,9 @@ export type Bomb = Point & { fuse: number; range: number; ownerPass: boolean; id
 export type Enemy = Point & { id: number; targetX: number; targetY: number; moveTimer: number; alive: boolean; facing: Direction };
 export type UpgradeType = 'range' | 'capacity' | 'shield';
 export type BlastKind = 'normal' | 'powered' | 'chain';
+export type BlastCell = Point & { distance: number; direction: Direction | null };
 export type Upgrade = Point & { type: UpgradeType };
-export type GameEvent = { type: 'explode' | 'crate' | 'hit' | 'shield' | 'upgrade' | 'enemy' | 'bomb'; x: number; y: number; kind?: BlastKind; upgrade?: UpgradeType };
+export type GameEvent = { type: 'explode' | 'crate' | 'hit' | 'shield' | 'upgrade' | 'enemy' | 'bomb'; x: number; y: number; kind?: BlastKind; upgrade?: UpgradeType; cells?: BlastCell[] };
 
 const dirs: Record<Direction, Point> = {
   up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 },
@@ -137,8 +138,10 @@ export class Game {
   private explode(bomb: Bomb, chained = false) {
     const index = this.bombs.indexOf(bomb); if (index < 0) return;
     const kind:BlastKind = chained ? 'chain' : bomb.range > 2 ? 'powered' : 'normal';
-    this.bombs.splice(index,1); this.events.push({type:'explode',x:bomb.x,y:bomb.y,kind});
-    const ignite = (x:number,y:number) => {
+    const cells:BlastCell[]=[];
+    this.bombs.splice(index,1); this.events.push({type:'explode',x:bomb.x,y:bomb.y,kind,cells});
+    const ignite = (x:number,y:number,distance:number,direction:Direction|null) => {
+      cells.push({x,y,distance,direction});
       const key=Game.key(x,y);
       this.fire.set(key,0.56);
       const priority:Record<BlastKind,number>={normal:0,chain:1,powered:2};
@@ -147,14 +150,14 @@ export class Game {
       const chainedBomb = this.bombs.find(b => b.x===x && b.y===y);
       if (chainedBomb) this.explode(chainedBomb,true);
     };
-    ignite(bomb.x,bomb.y);
+    ignite(bomb.x,bomb.y,0,null);
     this.fireKinds.set(Game.key(bomb.x,bomb.y),kind);
     for (const dir of directionList) {
       const d=dirs[dir];
       for (let step=1;step<=bomb.range;step++) {
         const x=bomb.x+d.x*step,y=bomb.y+d.y*step,tile=this.tile(x,y);
         if (tile===1) break;
-        ignite(x,y);
+        ignite(x,y,step,dir);
         if (tile===2) {
           this.tiles[y][x]=0; this.events.push({type:'crate',x,y});
           if (this.rand()<0.24 && !(x===this.portal.x && y===this.portal.y)) {

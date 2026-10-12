@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
-import { Game, WIDTH, HEIGHT, type BlastKind, type Direction, type Point, type UpgradeType } from './logic';
+import { Game, WIDTH, HEIGHT, type BlastKind, type BlastCell, type Direction, type Point, type UpgradeType } from './logic';
 import './style.css';
 
 const stage = document.querySelector<HTMLElement>('#stage')!;
@@ -51,7 +51,8 @@ scene.add(sun);
 const rim = new THREE.DirectionalLight('#7789ff',0.8); rim.position.set(8,6,-9); scene.add(rim);
 
 const mat = (color:string, roughness=0.65, metalness=0) => new THREE.MeshStandardMaterial({color,roughness,metalness});
-const floorA=mat('#536985'), floorB=mat('#49617e'), floorEdge=mat('#263a58');
+const floorMats=['#4b627f','#506783','#48607d','#4d6580'].map(color=>mat(color,0.88));
+const floorEdge=mat('#263a58');
 const stone=mat('#347c98',0.68), stoneTop=mat('#62c9ca',0.5), stoneTrim=mat('#20526f');
 const wood=mat('#bf794f',0.72), woodTop=mat('#e29a64',0.7), woodTrim=mat('#81563f',0.78), woodNail=mat('#e7c88a',0.3,0.55);
 const bombMat=mat('#222b4c',0.22,0.25), bombCap=mat('#596582',0.4,0.3);
@@ -62,10 +63,14 @@ const blastPalette:Record<BlastKind,{edge:string;core:string;spark:string}>={
   powered:{edge:'#35bde2',core:'#bbfaff',spark:'#70e8ff'},
   chain:{edge:'#aa71f4',core:'#ffe0ff',spark:'#d6a2ff'},
 };
-const fireMaterials=Object.fromEntries(Object.entries(blastPalette).map(([kind,colors])=>[kind,{
-  edge:new THREE.MeshBasicMaterial({color:colors.edge,transparent:true,opacity:0.78,depthWrite:false}),
-  core:new THREE.MeshBasicMaterial({color:colors.core,transparent:true,opacity:0.94,depthWrite:false}),
-}])) as Record<BlastKind,{edge:THREE.MeshBasicMaterial;core:THREE.MeshBasicMaterial}>;
+const textureLoader=new THREE.TextureLoader();
+const particleTexture=(name:string)=>{
+  const texture=textureLoader.load(`/assets/kenney/particles/${name}.png`);
+  texture.colorSpace=THREE.SRGBColorSpace;
+  return texture;
+};
+const fxTextures={fire:particleTexture('fire_01'),flame:particleTexture('flame_02'),smoke:particleTexture('smoke_05'),spark:particleTexture('spark_05'),scorch:particleTexture('scorch_01'),scratch:particleTexture('scratch_01'),dirt:particleTexture('dirt_02'),flare:particleTexture('flare_01')};
+const fxMaterial=(texture:THREE.Texture,color:string,opacity=1,additive=true)=>new THREE.SpriteMaterial({map:texture,color,transparent:true,opacity,blending:additive?THREE.AdditiveBlending:THREE.NormalBlending,depthWrite:false});
 const portalMat = new THREE.MeshStandardMaterial({color:'#76dfff',emissive:'#18baf0',emissiveIntensity:2.7,metalness:0.35,roughness:0.2});
 const upgradeMats:Record<UpgradeType,THREE.MeshStandardMaterial>={
   range:new THREE.MeshStandardMaterial({color:'#ffae54',emissive:'#ff6828',emissiveIntensity:0.9,metalness:0.3,roughness:0.3}),
@@ -84,8 +89,18 @@ const actors = new THREE.Group(); scene.add(actors);
 const effects = new THREE.Group(); scene.add(effects);
 const floorBase=rounded(WIDTH+0.28,0.34,HEIGHT+0.28,0.14,floorEdge); floorBase.position.y=-0.28; floorBase.receiveShadow=true; board.add(floorBase);
 for(let y=0;y<HEIGHT;y++)for(let x=0;x<WIDTH;x++){
-  const cell=mesh(new THREE.BoxGeometry(0.995,0.07,0.995),(x+y)%2?floorA:floorB,false);
+  const variation=(x*17+y*31+x*y*7)%floorMats.length;
+  const cell=mesh(new THREE.BoxGeometry(0.995,0.07,0.995),floorMats[variation],false);
   cell.position.set(x-6,-0.07,y-5); cell.receiveShadow=true; board.add(cell);
+}
+const floorWearMaterial=new THREE.MeshBasicMaterial({map:fxTextures.scratch,color:'#9fb8ca',transparent:true,opacity:0.2,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1});
+const floorDirtMaterial=new THREE.MeshBasicMaterial({map:fxTextures.dirt,color:'#1c2e46',transparent:true,opacity:0.32,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1});
+for(let y=1;y<HEIGHT-1;y++)for(let x=1;x<WIDTH-1;x++){
+  const variant=(x*23+y*19+x*y*11)%17;
+  if(variant>2)continue;
+  const wear=mesh(new THREE.PlaneGeometry(0.72,0.72),variant===0?floorWearMaterial:floorDirtMaterial,false);
+  wear.rotation.x=-Math.PI/2;wear.rotation.z=(x*7+y*3)*0.31;
+  wear.position.set(x-6,0.003,y-5);board.add(wear);
 }
 const rimBase=rounded(WIDTH+1.2,0.34,HEIGHT+1.2,0.22,mat('#202d48'));
 rimBase.position.y=-0.55; board.add(rimBase);
@@ -120,7 +135,7 @@ function character(primary:string,accent:string,evil=false){
     const foot=rounded(0.18,0.16,0.24,0.05,dark);foot.position.set(x,0.08,0.06);g.add(foot);
   }
   const crest=mesh(new THREE.SphereGeometry(0.09,12,8),mat(evil?'#ff8aa1':'#ffffff'));crest.position.set(0,1.08,0);g.add(crest);
-  g.scale.setScalar(1.15);
+  g.scale.setScalar(1.36);
   return g;
 }
 function bombObject(range:number){
@@ -134,22 +149,74 @@ function bombObject(range:number){
   const fuse=mesh(new THREE.CylinderGeometry(0.045,0.06,0.15,8),accent);fuse.position.y=0.79;g.add(fuse);
   const led=mesh(new THREE.SphereGeometry(0.1,12,8),accent,false);led.position.y=0.89;g.add(led);
   const halo=mesh(new THREE.TorusGeometry(0.41,0.025,6,24),accent,false);halo.rotation.x=Math.PI/2;halo.position.y=0.08;g.add(halo);
+  const warningRing=mesh(new THREE.RingGeometry(0.38,0.5,28),new THREE.MeshBasicMaterial({color:charged?'#65e8f5':'#ff9a4b',transparent:true,opacity:0,depthWrite:false,side:THREE.DoubleSide}),false);
+  warningRing.rotation.x=-Math.PI/2;warningRing.position.y=0.025;g.add(warningRing);
+  const fuseSpark=new THREE.Sprite(fxMaterial(fxTextures.flame,charged?'#a9faff':'#ffe293',0));
+  fuseSpark.position.y=0.97;fuseSpark.scale.set(0.25,0.32,1);g.add(fuseSpark);
   const point=new THREE.PointLight(charged?'#6eeff2':'#ff9439',0.8,2.1);point.position.y=0.83;g.add(point);
-  g.userData={led,halo,point};
+  g.userData={led,halo,warningRing,fuseSpark,point};
   return g;
 }
-function fireObject(kind:BlastKind){
-  const g=new THREE.Group();
-  const materials=fireMaterials[kind];
-  const outer=rounded(0.88,0.12,0.88,0.11,materials.edge);outer.position.y=0.1;g.add(outer);
-  const core=mesh(new THREE.OctahedronGeometry(0.34,0),materials.core,false);core.scale.set(1,0.6,1);core.position.y=0.28;g.add(core);
-  for(const [x,z] of [[-0.28,0],[0.28,0],[0,-0.28],[0,0.28]]){
-    const flame=mesh(new THREE.ConeGeometry(0.15,0.48,5),materials.edge,false);
-    flame.position.set(x,0.31,z);flame.rotation.z=x*0.45;flame.rotation.x=z*0.45;g.add(flame);
+function disposeBombObject(object:THREE.Object3D){
+  disposeVisualGeometry(object);
+  ((object.userData.warningRing as THREE.Mesh).material as THREE.Material).dispose();
+  (object.userData.fuseSpark as THREE.Sprite).material.dispose();
+}
+type FireParts={marker:THREE.Mesh;ground:THREE.Mesh;ribbon:THREE.Mesh;hot:THREE.Mesh;outer:THREE.Sprite;inner:THREE.Sprite;arc:THREE.Sprite|null;chargeRing:THREE.Mesh|null};
+function flameShapeGeometry(center:boolean){
+  const shape=new THREE.Shape();
+  if(center){
+    for(let i=0;i<16;i++){
+      const angle=i*Math.PI/8,r=i%2===0?0.53:0.39;
+      const x=Math.cos(angle)*r,y=Math.sin(angle)*r;
+      if(i===0)shape.moveTo(x,y);else shape.lineTo(x,y);
+    }
+    shape.closePath();
+  }else{
+    shape.moveTo(-0.57,-0.2);
+    shape.bezierCurveTo(-0.24,-0.34,0.03,-0.25,0.2,-0.31);
+    shape.lineTo(0.59,-0.08);
+    shape.lineTo(0.48,0.09);
+    shape.bezierCurveTo(0.13,0.18,-0.18,0.35,-0.55,0.21);
+    shape.closePath();
   }
-  const top=mesh(new THREE.OctahedronGeometry(0.13,0),materials.core,false);top.position.y=0.65;g.add(top);
-  g.userData.kind=kind;
+  return new THREE.ShapeGeometry(shape);
+}
+function fireObject(kind:BlastKind,cell:BlastCell|undefined){
+  const g=new THREE.Group();
+  const palette=blastPalette[kind];
+  // The full danger footprint is visible from the same frame in which the game applies damage.
+  const marker=mesh(new THREE.PlaneGeometry(0.97,0.97),new THREE.MeshBasicMaterial({color:palette.edge,transparent:true,opacity:0.3,depthWrite:false,side:THREE.DoubleSide}),false);
+  marker.rotation.x=-Math.PI/2;marker.position.y=0.016;g.add(marker);
+  const ground=mesh(new THREE.PlaneGeometry(1.12,1.12),new THREE.MeshBasicMaterial({map:fxTextures.fire,color:palette.edge,transparent:true,opacity:0.7,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide}),false);
+  ground.rotation.x=-Math.PI/2;ground.position.y=0.027;g.add(ground);
+  const angle=cell?.direction==='up'?-Math.PI/2:cell?.direction==='down'?Math.PI/2:cell?.direction==='left'?Math.PI:0;
+  const ribbon=mesh(flameShapeGeometry(!cell?.direction),new THREE.MeshBasicMaterial({color:palette.edge,transparent:true,opacity:0.85,depthWrite:false,side:THREE.DoubleSide}),false);
+  ribbon.rotation.set(-Math.PI/2,0,angle);ribbon.position.y=0.039;g.add(ribbon);
+  const hot=mesh(flameShapeGeometry(!cell?.direction),new THREE.MeshBasicMaterial({color:palette.core,transparent:true,opacity:0.85,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide}),false);
+  hot.rotation.set(-Math.PI/2,0,angle);hot.position.y=0.048;hot.scale.setScalar(0.63);g.add(hot);
+  const outer=new THREE.Sprite(fxMaterial(fxTextures.flame,palette.edge,0.95,false));
+  outer.position.set(0,0.7,0);outer.scale.set(1.75,1.75,1);g.add(outer);
+  const inner=new THREE.Sprite(fxMaterial(fxTextures.fire,palette.core,0.92));
+  inner.position.set(0,0.58,0.015);inner.scale.set(1.25,1.3,1);g.add(inner);
+  let arc:THREE.Sprite|null=null;
+  if(kind==='chain'){
+    arc=new THREE.Sprite(fxMaterial(fxTextures.spark,'#f4c9ff',0.84));
+    arc.position.set(0,0.55,0);arc.scale.set(0.92,1.02,1);g.add(arc);
+  }
+  let chargeRing:THREE.Mesh|null=null;
+  if(kind==='powered'){
+    chargeRing=mesh(new THREE.TorusGeometry(0.32,0.045,7,24),new THREE.MeshBasicMaterial({color:palette.core,transparent:true,opacity:0.76,blending:THREE.AdditiveBlending,depthWrite:false}),false);
+    chargeRing.rotation.x=Math.PI/2;chargeRing.position.y=0.16;g.add(chargeRing);
+  }
+  g.userData={kind,parts:{marker,ground,ribbon,hot,outer,inner,arc,chargeRing} satisfies FireParts,cell};
   return g;
+}
+function disposeFireObject(object:THREE.Object3D){
+  object.traverse(child=>{
+    if(child instanceof THREE.Mesh){child.geometry.dispose();(child.material as THREE.Material).dispose();}
+    if(child instanceof THREE.Sprite)(child.material as THREE.Material).dispose();
+  });
 }
 function portalObject(){
   const g=new THREE.Group();
@@ -187,7 +254,7 @@ function makeAnimatedArt(gltf:GLTF):AnimatedArt{
   model.traverse(child=>{if(child instanceof THREE.Mesh){child.castShadow=true;child.receiveShadow=true;}});
   const bounds=new THREE.Box3().setFromObject(model);
   const size=bounds.getSize(new THREE.Vector3());
-  const scale=Math.min(0.95/Math.max(size.x,size.z,0.01),1.10/Math.max(size.y,0.01));
+  const scale=Math.min(1.16/Math.max(size.x,size.z,0.01),1.36/Math.max(size.y,0.01));
   model.scale.multiplyScalar(scale);
   model.position.y=-bounds.min.y*scale;
   const mixer=new THREE.AnimationMixer(model);
@@ -208,10 +275,12 @@ const bombObjects=new Map<number,THREE.Object3D>();
 const enemyObjects=new Map<number,THREE.Group>();
 const enemyArt=new Map<number,AnimatedArt>();
 const fireObjects=new Map<string,THREE.Object3D>();
+const firePatterns=new Map<string,BlastCell>();
 const upgradeObjects=new Map<string,THREE.Object3D>();
 type Particle = { object: THREE.Mesh; velocity: THREE.Vector3; life: number; maxLife: number };
 const particles:Particle[]=[];
 const particleGeometry=new THREE.OctahedronGeometry(0.055,0);
+const splinterGeometry=new THREE.BoxGeometry(0.075,0.19,0.065);
 type Shockwave={object:THREE.Mesh;material:THREE.MeshBasicMaterial;age:number;duration:number;size:number};
 const shockwaves:Shockwave[]=[];
 function shockwave(x:number,y:number,color:string,size=1){
@@ -239,12 +308,61 @@ function burst(x:number,y:number,color:string,count:number){
     particles.push({object,velocity:new THREE.Vector3((Math.random()-.5)*2.7,1.3+Math.random()*2.2,(Math.random()-.5)*2.7),life:.55+Math.random()*.25,maxLife:.8});
   }
 }
+function woodBurst(x:number,y:number){
+  const origin=world({x,y});
+  for(let i=0;i<9;i++){
+    const material=new THREE.MeshBasicMaterial({color:i%3===0?'#e6a473':i%3===1?'#a56543':'#c88557',transparent:true,opacity:1,depthWrite:false});
+    const object=new THREE.Mesh(splinterGeometry,material);
+    object.position.set(origin.x+(Math.random()-.5)*0.4,0.35+Math.random()*0.3,origin.z+(Math.random()-.5)*0.4);
+    effects.add(object);
+    const life=0.45+Math.random()*0.35;
+    particles.push({object,velocity:new THREE.Vector3((Math.random()-.5)*2.5,1.2+Math.random()*2,(Math.random()-.5)*2.5),life,maxLife:life});
+  }
+}
 function updateParticles(dt:number){
   for(let i=particles.length-1;i>=0;i--){
     const p=particles[i];p.life-=dt;p.velocity.y-=dt*5;p.object.position.addScaledVector(p.velocity,dt);
     p.object.rotation.x+=dt*8;p.object.rotation.z+=dt*6;
     (p.object.material as THREE.MeshBasicMaterial).opacity=Math.max(0,p.life/p.maxLife);
     if(p.life<=0){effects.remove(p.object);(p.object.material as THREE.Material).dispose();particles.splice(i,1);}
+  }
+}
+type SpriteFx={object:THREE.Sprite;velocity:THREE.Vector3;age:number;delay:number;duration:number;opacity:number;startScale:number;endScale:number};
+const spriteEffects:SpriteFx[]=[];
+function transientSprite(x:number,y:number,texture:THREE.Texture,color:string,options:{height:number;duration:number;delay?:number;opacity:number;startScale:number;endScale:number;velocity?:THREE.Vector3;additive?:boolean}){
+  const object=new THREE.Sprite(fxMaterial(texture,color,0,options.additive??true));
+  object.position.copy(world({x,y}));object.position.y=options.height;
+  object.scale.setScalar(options.startScale);
+  effects.add(object);
+  spriteEffects.push({object,velocity:options.velocity??new THREE.Vector3(),age:0,delay:options.delay??0,duration:options.duration,opacity:options.opacity,startScale:options.startScale,endScale:options.endScale});
+}
+function updateSpriteEffects(dt:number){
+  for(let i=spriteEffects.length-1;i>=0;i--){
+    const fx=spriteEffects[i];fx.age+=dt;
+    const progress=(fx.age-fx.delay)/fx.duration;
+    if(progress<0)continue;
+    if(progress>=1){effects.remove(fx.object);fx.object.material.dispose();spriteEffects.splice(i,1);continue;}
+    const envelope=Math.min(1,progress*6)*Math.pow(1-progress,1.35);
+    fx.object.material.opacity=fx.opacity*envelope;
+    fx.object.scale.setScalar(fx.startScale+(fx.endScale-fx.startScale)*progress);
+    fx.object.position.addScaledVector(fx.velocity,dt);
+  }
+}
+type Scorch={object:THREE.Mesh;age:number;duration:number};
+const scorches:Scorch[]=[];
+function markScorch(x:number,y:number){
+  const material=new THREE.MeshBasicMaterial({map:fxTextures.scorch,color:'#263246',transparent:true,opacity:0.34,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2});
+  const object=new THREE.Mesh(new THREE.PlaneGeometry(1.15,1.15),material);
+  object.rotation.x=-Math.PI/2;object.rotation.z=(x*7+y*13)*0.4;
+  object.position.copy(world({x,y}));object.position.y=0.009;
+  board.add(object);scorches.push({object,age:0,duration:7});
+  if(scorches.length>26){const old=scorches.shift()!;board.remove(old.object);old.object.geometry.dispose();(old.object.material as THREE.Material).dispose();}
+}
+function updateScorches(dt:number){
+  for(let i=scorches.length-1;i>=0;i--){
+    const scorch=scorches[i];scorch.age+=dt;
+    (scorch.object.material as THREE.MeshBasicMaterial).opacity=0.34*Math.max(0,1-scorch.age/scorch.duration);
+    if(scorch.age>=scorch.duration){board.remove(scorch.object);scorch.object.geometry.dispose();(scorch.object.material as THREE.Material).dispose();scorches.splice(i,1);}
   }
 }
 let portalObjectRef:THREE.Object3D|null=null;
@@ -259,7 +377,7 @@ shieldAura.visible=false;actors.add(shieldAura);
 let playerArt:AnimatedArt|null=null;
 let enemyTemplate:GLTF|null=null;
 let playerLoadRequest=0;
-const playerShadow=mesh(new THREE.CircleGeometry(0.38,20),new THREE.MeshBasicMaterial({color:'#121e39',transparent:true,opacity:0.22}),false);
+const playerShadow=mesh(new THREE.CircleGeometry(0.44,20),new THREE.MeshBasicMaterial({color:'#121e39',transparent:true,opacity:0.3}),false);
 playerShadow.rotation.x=-Math.PI/2; playerShadow.position.y=0.004;actors.add(playerShadow);
 const key=(x:number,y:number)=>Game.key(x,y);
 function applyEnemyArt(group:THREE.Group,id:number){
@@ -314,6 +432,7 @@ function tileModel(x:number,y:number,tile:1|2){
   const template=tileModels.get(name);
   if(!template)return tile===1?stoneBlock():crate();
   const model=template.clone(true);
+  if(name==='wood-structure')model.rotation.y=((x*7+y*11)%4)*Math.PI/2;
   const group=new THREE.Group();
   group.add(model);
   if(name!=='wood-structure')return group;
@@ -401,25 +520,64 @@ function syncDynamic(){
   for(const bomb of game.bombs){
     let obj=bombObjects.get(bomb.id);
     if(!obj){obj=bombObject(bomb.range);obj.position.copy(world(bomb));props.add(obj);bombObjects.set(bomb.id,obj);}
-    const tempo=0.012+(2.15-bomb.fuse)*0.012;
-    const pulse=1+0.055*Math.sin(performance.now()*tempo + bomb.id);
-    obj.scale.setScalar(pulse);
-    (obj.userData.led as THREE.Mesh).scale.setScalar(0.75+0.35*Math.max(0,Math.sin(performance.now()*tempo*1.8)));
-    (obj.userData.halo as THREE.Mesh).rotation.y+=0.012;
-    (obj.userData.point as THREE.PointLight).intensity=0.55+0.55*Math.max(0,Math.sin(performance.now()*tempo));
+    const age=2.15-bomb.fuse;
+    const landing=Math.max(0,1-age/0.13);
+    const warning=Math.max(0,Math.min(1,(0.72-bomb.fuse)/0.72));
+    const shake=Math.max(0,Math.min(1,(0.26-bomb.fuse)/0.26));
+    const time=performance.now()/1000;
+    obj.position.y=landing*landing*0.13;
+    obj.scale.set(1+landing*0.08+shake*0.026*Math.sin(time*55+bomb.id),1-landing*0.1,1+landing*0.08-shake*0.026*Math.sin(time*55+bomb.id));
+    obj.rotation.z=shake*0.075*Math.sin(time*49+bomb.id);
+    obj.rotation.x=shake*0.06*Math.sin(time*57+bomb.id*1.7);
+    const led=obj.userData.led as THREE.Mesh;
+    led.scale.setScalar(0.72+warning*0.28*Math.max(0,Math.sin(time*(10+warning*20))));
+    const halo=obj.userData.halo as THREE.Mesh;
+    halo.visible=warning>0.02;
+    halo.scale.setScalar(0.9+warning*0.25);
+    const warningRing=obj.userData.warningRing as THREE.Mesh;
+    (warningRing.material as THREE.MeshBasicMaterial).opacity=warning*0.72*(0.72+0.28*Math.sin(time*(10+warning*18)));
+    warningRing.scale.setScalar(0.86+warning*0.24);
+    const fuseSpark=obj.userData.fuseSpark as THREE.Sprite;
+    fuseSpark.material.opacity=warning*(0.45+0.45*Math.max(0,Math.sin(time*(12+warning*25))));
+    fuseSpark.scale.set(0.25+warning*0.23,0.32+warning*0.3,1);
+    (obj.userData.point as THREE.PointLight).intensity=0.25+warning*(0.4+0.55*Math.max(0,Math.sin(time*(10+warning*20))));
+    const tick=Math.floor((0.72-bomb.fuse)/0.18);
+    if(warning>0&&tick>(obj.userData.lastTick??-1)){obj.userData.lastTick=tick;beep(450+tick*90,0.045,'triangle',0.012);}
   }
-  for(const [id,obj] of bombObjects)if(!game.bombs.some(b=>b.id===id)){props.remove(obj);disposeVisualGeometry(obj);bombObjects.delete(id);}
+  for(const [id,obj] of bombObjects)if(!game.bombs.some(b=>b.id===id)){props.remove(obj);disposeBombObject(obj);bombObjects.delete(id);}
   for(const [id,ttl] of game.fire){
     let obj=fireObjects.get(id);
     const kind=game.fireKinds.get(id)??'normal';
-    if(obj&&obj.userData.kind!==kind){effects.remove(obj);disposeVisualGeometry(obj);fireObjects.delete(id);obj=undefined;}
-    if(!obj){const [x,y]=id.split(',').map(Number);obj=fireObject(kind);obj.position.copy(world({x,y}));effects.add(obj);fireObjects.set(id,obj);}
-    const age=0.56-ttl,opening=Math.min(1,age/0.08),closing=Math.min(1,ttl/0.16);
-    const size=(0.77+0.17*Math.sin(performance.now()*0.03))*Math.max(0.05,opening*closing);
-    obj.scale.set(size,size*(1+0.25*Math.sin(performance.now()*0.025)),size);
-    obj.rotation.y=kind==='chain'?age*4:kind==='powered'?age*2:0;
+    if(obj&&obj.userData.kind!==kind){effects.remove(obj);disposeFireObject(obj);fireObjects.delete(id);obj=undefined;}
+    if(!obj){const [x,y]=id.split(',').map(Number);obj=fireObject(kind,firePatterns.get(id));obj.position.copy(world({x,y}));effects.add(obj);fireObjects.set(id,obj);}
+    const age=0.56-ttl,cell=obj.userData.cell as BlastCell|undefined;
+    const distance=cell?.distance??0;
+    const opening=Math.max(0,Math.min(1,(age-distance*0.035)/0.085));
+    const closing=Math.min(1,ttl/0.14);
+    const flicker=0.88+0.12*Math.sin(performance.now()*0.037+distance*2.1);
+    const parts=obj.userData.parts as FireParts;
+    (parts.marker.material as THREE.MeshBasicMaterial).opacity=(0.32+0.2*opening)*closing;
+    (parts.ground.material as THREE.MeshBasicMaterial).opacity=(0.45+0.5*opening)*closing;
+    (parts.ribbon.material as THREE.MeshBasicMaterial).opacity=(0.5+0.4*opening)*closing;
+    (parts.hot.material as THREE.MeshBasicMaterial).opacity=(0.35+0.43*opening)*closing;
+    parts.ribbon.scale.setScalar(0.82+0.18*opening);
+    parts.hot.scale.setScalar(0.48+0.21*opening);
+    parts.ground.scale.setScalar(0.95+0.25*opening);
+    parts.ground.rotation.z=age*(kind==='powered'?3:kind==='chain'?2.4:0.7)+distance*0.75;
+    parts.outer.material.opacity=(0.38+0.6*opening)*closing;
+    parts.outer.scale.set(1.3+0.5*opening,1.25+0.6*opening*flicker,1);
+    parts.outer.position.y=0.63+0.15*opening;
+    parts.inner.material.opacity=(0.3+0.5*opening)*closing;
+    parts.inner.scale.set(0.9+0.4*opening,0.93+0.42*opening*flicker,1);
+    parts.outer.material.rotation=kind==='powered'?age*2.2:kind==='chain'?age*-1.5:Math.sin(age*13+distance)*0.18;
+    parts.inner.material.rotation=kind==='powered'?-age*2.8:0;
+    if(parts.arc){parts.arc.material.opacity=(0.18+0.78*opening)*closing*(Math.sin(age*68+distance)>0?1:0.28);parts.arc.material.rotation=age*7+distance;}
+    if(parts.chargeRing){
+      (parts.chargeRing.material as THREE.MeshBasicMaterial).opacity=(0.3+0.55*opening)*closing;
+      parts.chargeRing.scale.setScalar(0.75+0.55*Math.abs(Math.sin(age*22)));
+    }
   }
-  for(const [id,obj] of fireObjects)if(!game.fire.has(id)){effects.remove(obj);disposeVisualGeometry(obj);fireObjects.delete(id);}
+  for(const [id,obj] of fireObjects)if(!game.fire.has(id)){effects.remove(obj);disposeFireObject(obj);fireObjects.delete(id);firePatterns.delete(id);}
   for(const upgrade of game.upgrades){
     const id=key(upgrade.x,upgrade.y);
     if(!upgradeObjects.has(id)){const obj=upgradeObject(upgrade.type);obj.position.copy(world(upgrade));props.add(obj);upgradeObjects.set(id,obj);}
@@ -434,12 +592,14 @@ function syncDynamic(){
 }
 function clearObjects(){
   for(const obj of tileObjects.values())props.remove(obj);tileObjects.clear();
-  for(const obj of bombObjects.values()){props.remove(obj);disposeVisualGeometry(obj);}bombObjects.clear();
+  for(const obj of bombObjects.values()){props.remove(obj);disposeBombObject(obj);}bombObjects.clear();
   for(const obj of enemyObjects.values())actors.remove(obj);enemyObjects.clear();
   for(const art of enemyArt.values())art.mixer.stopAllAction();enemyArt.clear();
-  for(const obj of fireObjects.values()){effects.remove(obj);disposeVisualGeometry(obj);}fireObjects.clear();
+  for(const obj of fireObjects.values()){effects.remove(obj);disposeFireObject(obj);}fireObjects.clear();firePatterns.clear();
   for(const obj of upgradeObjects.values()){props.remove(obj);disposeVisualGeometry(obj);}upgradeObjects.clear();
   for(const p of particles){effects.remove(p.object);(p.object.material as THREE.Material).dispose();}particles.length=0;
+  for(const fx of spriteEffects){effects.remove(fx.object);fx.object.material.dispose();}spriteEffects.length=0;
+  for(const scorch of scorches){board.remove(scorch.object);scorch.object.geometry.dispose();(scorch.object.material as THREE.Material).dispose();}scorches.length=0;
   for(const wave of shockwaves){effects.remove(wave.object);wave.material.dispose();wave.object.geometry.dispose();}shockwaves.length=0;
   if(portalObjectRef){props.remove(portalObjectRef);portalObjectRef=null;}
 }
@@ -460,6 +620,27 @@ function beep(freq:number,duration:number,type:OscillatorType='sine',volume=0.04
   osc.frequency.exponentialRampToValueAtTime(Math.max(70,freq*0.5),audioContext.currentTime+duration);
   gain.gain.setValueAtTime(volume,audioContext.currentTime);gain.gain.exponentialRampToValueAtTime(0.001,audioContext.currentTime+duration);
   osc.connect(gain);gain.connect(audioContext.destination);osc.start();osc.stop(audioContext.currentTime+duration);
+}
+let impactNoise:AudioBuffer|null=null;
+function noiseHit(duration:number,volume:number,highpass=240){
+  if(!audioEnabled)return;
+  audioContext ??= new AudioContext();
+  if(!impactNoise){
+    impactNoise=audioContext.createBuffer(1,Math.floor(audioContext.sampleRate*0.45),audioContext.sampleRate);
+    const samples=impactNoise.getChannelData(0);
+    for(let i=0;i<samples.length;i++)samples[i]=Math.random()*2-1;
+  }
+  const source=audioContext.createBufferSource(),filter=audioContext.createBiquadFilter(),gain=audioContext.createGain();
+  source.buffer=impactNoise;filter.type='highpass';filter.frequency.value=highpass;
+  gain.gain.setValueAtTime(volume,audioContext.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001,audioContext.currentTime+duration);
+  source.connect(filter);filter.connect(gain);gain.connect(audioContext.destination);
+  source.start();source.stop(audioContext.currentTime+duration);
+}
+function explosionSound(kind:BlastKind){
+  beep(kind==='powered'?105:kind==='chain'?140:115,0.31,'sine',0.12);
+  noiseHit(0.24,kind==='powered'?0.095:0.075,kind==='chain'?650:280);
+  if(kind==='chain')beep(820,0.13,'sawtooth',0.022);
 }
 document.querySelector<HTMLButtonElement>('#sound-button')!.addEventListener('click',e=>{audioEnabled=!audioEnabled;(e.currentTarget as HTMLButtonElement).classList.toggle('active',audioEnabled);(e.currentTarget as HTMLButtonElement).setAttribute('aria-label',audioEnabled?'Ton ausschalten':'Ton einschalten');beep(700,0.12);});
 
@@ -559,7 +740,8 @@ for(const target of [stage,mobileControls]){
   target.addEventListener('dblclick',e=>e.preventDefault());
 }
 
-let last=performance.now(),accumulator=0,lastStatus=game.status,footstepTimer=0;
+let last=performance.now(),accumulator=0,lastStatus=game.status,footstepTimer=0,cameraJolt=0;
+const cameraRest=camera.position.clone();
 function frame(now:number){
   requestAnimationFrame(frame);
   const dt=Math.min((now-last)/1000,0.1);last=now;accumulator+=dt;footstepTimer=Math.max(0,footstepTimer-dt);
@@ -575,11 +757,19 @@ function frame(now:number){
   for(const event of game.drainEvents()){
     if(event.type==='explode'){
       const kind=event.kind??'normal',palette=blastPalette[kind];
-      burst(event.x,event.y,palette.spark,kind==='normal'?18:26);
+      for(const cell of event.cells??[])firePatterns.set(key(cell.x,cell.y),cell);
+      burst(event.x,event.y,palette.spark,kind==='normal'?10:15);
       shockwave(event.x,event.y,palette.edge,kind==='powered'?1.2:1);
-      beep(kind==='chain'?180:kind==='powered'?100:120,0.26,'sawtooth',0.07);
+      transientSprite(event.x,event.y,fxTextures.flare,palette.core,{height:1.02,duration:0.16,opacity:0.9,startScale:0.5,endScale:2.55});
+      transientSprite(event.x,event.y,fxTextures.smoke,'#64728a',{height:0.83,delay:0.18,duration:0.86,opacity:0.42,startScale:0.55,endScale:1.45,velocity:new THREE.Vector3(0,0.4,0),additive:false});
+      markScorch(event.x,event.y);
+      cameraJolt=Math.min(0.13,cameraJolt+(kind==='powered'?0.085:0.055));
+      stage.classList.remove('blast-impact');void stage.offsetWidth;
+      stage.classList.add('blast-impact');
+      explosionSound(kind);
     }
-    if(event.type==='crate'){burst(event.x,event.y,'#e7a56e',9);syncStatic();}
+    if(event.type==='crate'){woodBurst(event.x,event.y);syncStatic();noiseHit(0.12,0.025,750);}
+    if(event.type==='bomb')transientSprite(event.x,event.y,fxTextures.smoke,'#a7b1ba',{height:0.13,duration:0.2,opacity:0.25,startScale:0.12,endScale:0.58,additive:false});
     if(event.type==='hit'){showToast('AU! EIN LEBEN VERLOREN');beep(170,0.28,'square',0.04);}
     if(event.type==='shield'){burst(event.x,event.y,'#8ec8ff',16);shockwave(event.x,event.y,'#8ec8ff',0.75);showToast('SCHILD HAT DICH GESCHÜTZT!');beep(520,0.21,'triangle',0.04);}
     if(event.type==='upgrade'){
@@ -592,6 +782,10 @@ function frame(now:number){
   }
   if(lastStatus!==game.status){if(game.status==='won'||game.status==='lost')showResult();lastStatus=game.status;}
   if(toastTimer>0){toastTimer-=dt;if(toastTimer<=0)toast.classList.add('hidden');}
-  updateParticles(dt);updateShockwaves(dt);syncDynamic();if(game.status==='running'){playerArt?.mixer.update(dt);for(const art of enemyArt.values())art.mixer.update(dt);}updateHud();renderer.render(scene,camera);
+  updateParticles(dt);updateSpriteEffects(dt);updateScorches(dt);updateShockwaves(dt);syncDynamic();
+  cameraJolt=Math.max(0,cameraJolt-dt*0.8);
+  camera.position.copy(cameraRest);
+  if(cameraJolt>0){camera.position.x+=Math.sin(now*0.071)*cameraJolt;camera.position.z+=Math.sin(now*0.096)*cameraJolt*0.6;}
+  if(game.status==='running'){playerArt?.mixer.update(dt);for(const art of enemyArt.values())art.mixer.update(dt);}updateHud();renderer.render(scene,camera);
 }
 playerObject.position.copy(world(game.player));syncStatic();renderCharacterOptions();loadKenneyAssets();void loadDungeonAssets();updateHud();requestAnimationFrame(frame);
