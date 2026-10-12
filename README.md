@@ -15,17 +15,21 @@ npm run dev
 - **Leertaste**: Bombe legen
 - **R**: Fernzünder, Bombe mit Handschuh aufnehmen/werfen oder gekickte Bombe stoppen
 - **P** oder **Escape**: Pause
-- Auf Smartphones: D-Pad gedrückt halten und den Daumen für Richtungswechsel oder diagonale Bewegung ziehen; separater Bombenknopf
+- Auf Smartphones: linken Daumen auf dem runden Pad bewegen; die rechte Hälfte der Spiel- und Steuerfläche antippen, um eine Bombe zu legen
 
-Im laufenden Spiel verhindern das Spielfeld und die Touchsteuerung Browser-Zoomgesten. Der Startbildschirm bleibt auf kleinen Geräten scrollbar, falls er nicht vollständig in die verfügbare Höhe passt.
+Im laufenden Spiel verhindern das Spielfeld und die Touchsteuerung Browser-Zoomgesten. Die mobile Startauswahl füllt den Bildschirm; Figur, Bot-Modus, Karte und Startknopf sind ohne Scrollen erreichbar, auch auf kurzen Displays im Querformat.
 
 Halte eine Richtung gedrückt, um dich frei zwischen den Feldern zu bewegen. Zwei Richtungen gleichzeitig ergeben eine diagonale Bewegung. Wände, Kisten und Bomben blockieren die Figur direkt an ihrer Kante; Explosionen können sie auch treffen, wenn sie nur teilweise in einem betroffenen Feld steht. Bomben werden auf dem nächstgelegenen Feld platziert.
 
-Vor dem Start kannst du eine von sechs Kenney-Figuren und den Bot-Modus **Training**, **Leicht**, **Mittel** oder **Schwer** auswählen. Beide Einstellungen werden im Browser gespeichert. Im Training stehen die Bots still und greifen nicht an. In den anderen Modi bewegen sie sich und legen eigene Bomben; sie blockieren damit keine Bombenplätze des Spielers. Schwere Bots suchen Wege um feste Blöcke herum. Über das Pausemenü oder nach einer Runde führt „Figur / Modus ändern“ zurück zur Auswahl.
+Vor dem Start kannst du eine von sechs Kenney-Figuren, den Bot-Modus **Training**, **Leicht**, **Mittel** oder **Schwer** und eine Karte auswählen. Die Einstellungen werden im Browser gespeichert. Im Training stehen die Bots still und greifen nicht an. In den anderen Modi bewegen sie sich und legen eigene Bomben; sie blockieren damit keine Bombenplätze des Spielers. Schwere Bots suchen Wege um feste Blöcke herum. Über das Pausemenü oder nach einer Runde führt „Figur / Modus ändern“ zurück zur Auswahl.
+
+Der **Burghof** bleibt die klassische Karte mit Kenney-Holzobjekten. Die neue **Werkhalle** verwendet dunkle Metallblöcke und zerstörbare Energiecontainer. Auf zwei markierten Förderbahnen fahren dort gelegte Bomben alle 0,55 Sekunden ein Feld weiter, bis sie am Ende oder vor einer anderen Bombe stehen bleiben. Der Zünder läuft währenddessen weiter.
 
 Besiege alle drei Gegner und sprenge das Portal frei. Danach betritt das Portal, um zu gewinnen. Die Grundreichweite beträgt ein Feld pro Richtung. Die Bombe hat einen sichtbar abbrennenden Zünder, bleibt nach dem Legen ruhig und warnt erst kurz vor der Explosion mit Licht, Ring und leichtem Zittern. Fernzündbare, durchschlagende und Schleimbomben haben eigene Farben. Bot-Bomben sind rosa; normale Explosionen sind orange, stärkere türkis und Kettenreaktionen violett.
 
 Kisten und Fässer können die klassischen Items aus dem [Handbuch zu **Super Bomberman 2**](https://www.world-of-nintendo.com/manuals/super_nes/super_bomberman_2.shtml) enthalten: Extra-Feuerkraft, Extra-Bombe, Skates, Fernzünder, Bombenpass, Blockpass, Power-Handschuh, Bomben-Kick, Herz, maximale Feuerkraft, Power-Bombe, Superbombe, Schleimbombe und Schädel. Ein zusätzlicher Schild bleibt als Blastbound-Item erhalten. Der Handschuh nimmt eine nahe Bombe mit **R** auf und wirft sie mit erneutem **R** in Blickrichtung. Ein Kick schiebt Bomben feldweise; mit **R** hältst du sie an. Schleimbomben prallen beim Schieben oder Werfen von Hindernissen ab. Der Schädel verursacht für acht Sekunden einen zufälligen Nachteil; ein anderes Item hebt ihn auf. Die aktiven Fähigkeiten werden im Spiel eingeblendet. Auf Mobilgeräten erscheint für Spezialaktionen eine zweite Schaltfläche.
+
+Die Sammelobjekte sind jetzt helle, quadratische 3D-Kacheln mit eigens gezeichneten Bildsymbolen. Ihr kräftiger, sofort lesbarer Stil orientiert sich an den klassischen Items und an [Super Bomberman R 2](https://www.konami.com/games/bomberman/r2/eu/de/battle/); die Grafiken wurden für Blastbound neu erstellt.
 
 ## Prüfen
 

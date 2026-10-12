@@ -293,3 +293,34 @@ test('a skull causes a temporary curse and another pickup cures it',()=>{
   collect(game,'skull');assert.equal(game.player.curse,8);assert.ok(game.player.curseType);
   collect(game,'range');assert.equal(game.player.curse,0);assert.equal(game.player.curseType,null);
 });
+
+test('the foundry is a distinct selectable arena with clear conveyor lanes',()=>{
+  const game=new Game(40,'training','foundry');
+  assert.equal(game.map,'foundry');
+  assert.deepEqual(game.portal,{x:9,y:5});
+  assert.equal(game.conveyors.size,14);
+  for(const [key,direction] of game.conveyors){
+    const [x,y]=key.split(',').map(Number);
+    assert.equal(game.tile(x,y),0);
+    assert.equal(direction,y===3?'right':'left');
+  }
+  assert.equal(game.tile(1,1),0);
+  assert.equal(game.tile(11,9),0);
+  game.setMap('courtyard');
+  assert.equal(game.conveyors.size,0);
+  assert.deepEqual(game.portal,{x:9,y:7});
+  game.start();game.setMap('foundry');assert.equal(game.map,'courtyard');
+});
+
+test('foundry conveyors transport a bomb while its fuse continues to tick',()=>{
+  const game=new Game(41,'training','foundry');game.start();
+  game.player.x=4;game.player.y=3;
+  assert.equal(game.placeBomb(),true);
+  assert.equal(game.bombs[0].x,4);
+  for(let i=0;i<6;i++)game.update(0.1);
+  assert.equal(game.bombs[0].x,5);
+  assert.ok(game.bombs[0].fuse<BOMB_FUSE-0.5);
+  game.bombs.push({x:6,y:3,id:999,range:1,fuse:2,ownerPass:false});
+  for(let i=0;i<6;i++)game.update(0.1);
+  assert.equal(game.bombs[0].x,5);
+});

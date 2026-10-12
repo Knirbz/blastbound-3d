@@ -5,6 +5,7 @@ export const ENEMY_SPEED = 1.45;
 export const BOMB_FUSE = 2.8;
 export const FIRE_DURATION = 0.56;
 export type Difficulty = 'training' | 'easy' | 'medium' | 'hard';
+export type MapType = 'courtyard' | 'foundry';
 const difficultySettings: Record<Difficulty, { speed: number; focus: number; cooldown: number; range: number }> = {
   training: { speed: 0, focus: 0, cooldown: Infinity, range: 0 },
   easy: { speed: 0.95, focus: 0.35, cooldown: 6, range: 1 },
@@ -14,7 +15,7 @@ const difficultySettings: Record<Difficulty, { speed: number; focus: number; coo
 export type Tile = 0 | 1 | 2; // floor, stone, crate
 export type Direction = 'up' | 'down' | 'left' | 'right';
 export type Point = { x: number; y: number };
-export type Bomb = Point & { fuse: number; range: number; ownerPass: boolean; id: number; owner?: number; remote?: boolean; pierce?: boolean; slime?: boolean; moving?: Direction; moveTimer?: number; carried?: boolean };
+export type Bomb = Point & { fuse: number; range: number; ownerPass: boolean; id: number; owner?: number; remote?: boolean; pierce?: boolean; slime?: boolean; moving?: Direction; moveTimer?: number; beltTimer?: number; carried?: boolean };
 export type Enemy = Point & { id: number; targetX: number; targetY: number; moveTimer: number; bombCooldown: number; escapePath: Point[]; alive: boolean; facing: Direction };
 export type UpgradeType = 'range' | 'capacity' | 'speed' | 'remote' | 'bombPass' | 'blockPass' | 'glove' | 'kick' | 'heart' | 'maxRange' | 'powerBomb' | 'pierce' | 'slime' | 'skull' | 'shield';
 export const CLASSIC_UPGRADES: UpgradeType[] = ['range','capacity','speed','remote','bombPass','blockPass','glove','kick','heart','maxRange','powerBomb','pierce','slime','skull'];
@@ -45,11 +46,13 @@ export class Game {
   bombs: Bomb[] = [];
   enemies: Enemy[] = [];
   upgrades: Upgrade[] = [];
+  conveyors = new Map<string,Direction>();
   events: GameEvent[] = [];
   player = { x: 1, y: 1, lives: 3, shield: 0, invincible: 0, range: 1, capacity: 1, speed: 0, remote: false, bombPass: false, blockPass: false, glove: false, kick: false, powerBomb: false, pierce: false, slime: false, curse: 0, curseType: null as CurseType|null, facing: 'down' as Direction };
   carriedBombId: number | null = null;
   private autoBombTimer=0;
   difficulty: Difficulty = 'easy';
+  map: MapType = 'courtyard';
   portal: Point = { x: 9, y: 7 };
   status: 'ready' | 'running' | 'paused' | 'won' | 'lost' = 'ready';
   elapsed = 0;
@@ -57,19 +60,30 @@ export class Game {
   private bombId = 0;
   private enemyId = 0;
 
-  constructor(seed = Date.now(), difficulty: Difficulty = 'easy') { this.difficulty=difficulty; this.reset(seed); }
+  constructor(seed = Date.now(), difficulty: Difficulty = 'easy', map: MapType = 'courtyard') { this.difficulty=difficulty;this.map=map;this.reset(seed); }
   private rand() { this.randomState = (Math.imul(this.randomState, 1664525) + 1013904223) >>> 0; return this.randomState / 4294967296; }
   static key(x: number, y: number) { return `${x},${y}`; }
   inBounds(x: number, y: number) { return x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT; }
   tile(x: number, y: number): Tile { return this.inBounds(x, y) ? this.tiles[y][x] : 1; }
   reset(seed = Date.now()) {
     this.randomState = seed >>> 0;
+    this.portal=this.map==='foundry'?{x:9,y:5}:{x:9,y:7};
     this.tiles = Array.from({ length: HEIGHT }, (_, y) => Array.from({ length: WIDTH }, (_, x): Tile => {
-      if (x === 0 || y === 0 || x === WIDTH - 1 || y === HEIGHT - 1 || (x % 2 === 0 && y % 2 === 0)) return 1;
-      return this.rand() < 0.64 ? 2 : 0;
+      if (x === 0 || y === 0 || x === WIDTH - 1 || y === HEIGHT - 1) return 1;
+      if(this.map==='foundry'){
+        if(x%3===0&&y%2===0)return 1;
+        return this.rand()<0.59?2:0;
+      }
+      if(x%2===0&&y%2===0)return 1;
+      return this.rand()<0.64?2:0;
     }));
     const safe = [[1,1],[2,1],[1,2],[11,1],[10,1],[11,2],[1,9],[2,9],[1,8],[11,9],[10,9],[11,8]];
     for (const [x,y] of safe) this.tiles[y][x] = 0;
+    this.conveyors.clear();
+    if(this.map==='foundry')for(const [y,direction] of [[3,'right'],[7,'left']] as const)for(let x=3;x<=9;x++){
+      this.conveyors.set(Game.key(x,y),direction);
+      this.tiles[y][x]=0;
+    }
     this.tiles[this.portal.y][this.portal.x] = 2;
     this.fire.clear(); this.fireKinds.clear(); this.bombs = []; this.upgrades = []; this.events = []; this.carriedBombId = null;this.autoBombTimer=0;
     this.player = { x: 1, y: 1, lives: 3, shield: 0, invincible: 0, range: 1, capacity: 1, speed: 0, remote: false, bombPass: false, blockPass: false, glove: false, kick: false, powerBomb: false, pierce: false, slime: false, curse: 0, curseType: null, facing: 'down' };
@@ -78,6 +92,7 @@ export class Game {
   }
   start() { if (this.status === 'ready') this.status = 'running'; }
   setDifficulty(difficulty: Difficulty) { if (this.status === 'ready') this.difficulty=difficulty; }
+  setMap(map: MapType) { if (this.status === 'ready' && this.map!==map){this.map=map;this.reset();} }
   togglePause() { if (this.status === 'running') this.status = 'paused'; else if (this.status === 'paused') this.status = 'running'; }
   canEnemyEnter(x: number, y: number) {
     if (this.tile(x,y) !== 0) return false;
@@ -170,7 +185,18 @@ export class Game {
     for (const [key,ttl] of this.fire) { const next = ttl - dt; if (next <= 0) { this.fire.delete(key); this.fireKinds.delete(key); } else this.fire.set(key,next); }
     for(const bomb of this.bombs){
       if(bomb.carried){bomb.x=Math.round(this.player.x);bomb.y=Math.round(this.player.y);continue;}
-      if(!bomb.moving)continue;
+      if(!bomb.moving){
+        const direction=this.conveyors.get(Game.key(bomb.x,bomb.y));
+        if(!direction)continue;
+        bomb.beltTimer=(bomb.beltTimer??0.55)-dt;
+        if(bomb.beltTimer>0)continue;
+        const d=dirs[direction],nx=bomb.x+d.x,ny=bomb.y+d.y;
+        if(this.conveyors.has(Game.key(nx,ny))&&!this.bombs.some(other=>other!==bomb&&!other.carried&&other.x===nx&&other.y===ny)){
+          bomb.x=nx;bomb.y=ny;bomb.ownerPass=false;
+        }
+        bomb.beltTimer=0.55;
+        continue;
+      }
       bomb.moveTimer=(bomb.moveTimer??0)-dt;
       if(bomb.moveTimer>0)continue;
       const d=dirs[bomb.moving],nx=bomb.x+d.x,ny=bomb.y+d.y;
