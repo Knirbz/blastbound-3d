@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
-import { Game, WIDTH, HEIGHT, BOMB_FUSE, type BlastKind, type BlastCell, type Difficulty, type Direction, type Point, type UpgradeType } from './logic';
+import { Game, WIDTH, HEIGHT, BOMB_FUSE, FIRE_DURATION, type BlastKind, type BlastCell, type Difficulty, type Direction, type Point, type UpgradeType } from './logic';
 import './style.css';
 
 const stage = document.querySelector<HTMLElement>('#stage')!;
@@ -73,7 +73,7 @@ const bombMat=mat('#222b4c',0.22,0.25), bombCap=mat('#596582',0.4,0.3);
 const bombAccent={normal:mat('#ff9b59',0.26,0.25),powered:mat('#6eeff2',0.26,0.25),enemy:mat('#f36b83',0.26,0.25)};
 const glow = new THREE.MeshStandardMaterial({color:'#ffda6a',emissive:'#ff8e2e',emissiveIntensity:3,roughness:0.25});
 const blastPalette:Record<BlastKind,{edge:string;core:string;spark:string}>={
-  normal:{edge:'#ff773c',core:'#ffe08b',spark:'#ffd064'},
+  normal:{edge:'#ff6b2c',core:'#fff1b5',spark:'#ffd064'},
   powered:{edge:'#35bde2',core:'#bbfaff',spark:'#70e8ff'},
   chain:{edge:'#aa71f4',core:'#ffe0ff',spark:'#d6a2ff'},
 };
@@ -176,7 +176,7 @@ function disposeBombObject(object:THREE.Object3D){
   ((object.userData.warningRing as THREE.Mesh).material as THREE.Material).dispose();
   (object.userData.fuseSpark as THREE.Sprite).material.dispose();
 }
-type FireParts={marker:THREE.Mesh;ground:THREE.Mesh;flame:THREE.Mesh<THREE.PlaneGeometry,THREE.ShaderMaterial>;smoke:THREE.Sprite;chargeRing:THREE.Mesh|null};
+type FireParts={marker:THREE.Mesh;ground:THREE.Mesh;flame:THREE.Mesh<THREE.PlaneGeometry,THREE.ShaderMaterial>;outer:THREE.Sprite;core:THREE.Sprite;smoke:THREE.Sprite;arc:THREE.Sprite|null;light:THREE.PointLight|null;chargeRing:THREE.Mesh|null};
 const flameVertexShader=`
   varying vec2 vUv;
   void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}
@@ -191,9 +191,9 @@ const flameFragmentShader=`
   uniform float uSeed;
   void main(){
     vec2 p=(vUv-0.5)*2.0;
-    float wave=0.065*sin(p.x*18.0-uTime*19.0+uSeed)+0.035*sin(p.x*37.0+uTime*28.0+uSeed*1.7);
-    float width=0.6-0.1*abs(p.x)+wave;
-    float lane=1.0-smoothstep(width-0.13,width+0.05,abs(p.y));
+    float wave=0.105*sin(p.x*18.0-uTime*19.0+uSeed)+0.05*sin(p.x*37.0+uTime*28.0+uSeed*1.7);
+    float width=0.76-0.12*abs(p.x)+wave;
+    float lane=1.0-smoothstep(width-0.17,width+0.04,abs(p.y));
     lane*=1.0-smoothstep(0.88,1.08,abs(p.x));
     float radius=length(p*vec2(1.0,1.05));
     float burst=1.0-smoothstep(0.65+wave,0.94+wave,radius);
@@ -215,16 +215,27 @@ function fireObject(kind:BlastKind,cell:BlastCell|undefined){
   ground.rotation.x=-Math.PI/2;ground.position.y=0.027;g.add(ground);
   const angle=cell?.direction==='up'?-Math.PI/2:cell?.direction==='down'?Math.PI/2:cell?.direction==='left'?Math.PI:0;
   const material=new THREE.ShaderMaterial({vertexShader:flameVertexShader,fragmentShader:flameFragmentShader,uniforms:{uEdge:{value:new THREE.Color(palette.edge)},uCore:{value:new THREE.Color(palette.core)},uTime:{value:0},uOpacity:{value:0},uCenter:{value:center?1:0},uSeed:{value:Math.abs((cell?.x??0)*13+(cell?.y??0)*7)%11}},transparent:true,depthWrite:false,side:THREE.DoubleSide});
-  const flame=new THREE.Mesh(new THREE.PlaneGeometry(center?1.1:1.28,center?1.1:0.85),material);
+  const flame=new THREE.Mesh(new THREE.PlaneGeometry(center?1.1:1.28,center?1.1:1.05),material);
   flame.rotation.set(-Math.PI/2,0,angle);flame.position.y=0.055;g.add(flame);
+  const outer=new THREE.Sprite(fxMaterial(fxTextures.fire,palette.edge,0));
+  outer.position.y=0.38;outer.scale.set(center?1.45:1.35,center?1.2:1.1,1);g.add(outer);
+  const core=new THREE.Sprite(fxMaterial(fxTextures.fire,palette.core,0));
+  core.position.y=0.5;core.scale.set(center?1.15:1.05,center?0.95:0.9,1);g.add(core);
   const smoke=new THREE.Sprite(fxMaterial(fxTextures.smoke,'#49556a',0,false));
   smoke.position.y=0.43;smoke.scale.set(0.76,0.63,1);g.add(smoke);
+  let arc:THREE.Sprite|null=null;
+  if(kind==='chain'){
+    arc=new THREE.Sprite(fxMaterial(fxTextures.spark,'#f1b9ff',0));
+    arc.position.y=0.52;arc.scale.set(0.85,0.85,1);g.add(arc);
+  }
+  let light:THREE.PointLight|null=null;
+  if(center){light=new THREE.PointLight(palette.core,0,3.6,2);light.position.y=0.8;g.add(light);}
   let chargeRing:THREE.Mesh|null=null;
-  if(kind==='powered'){
+  if(kind==='powered'&&center){
     chargeRing=mesh(new THREE.TorusGeometry(0.32,0.045,7,24),new THREE.MeshBasicMaterial({color:palette.core,transparent:true,opacity:0.76,blending:THREE.AdditiveBlending,depthWrite:false}),false);
     chargeRing.rotation.x=Math.PI/2;chargeRing.position.y=0.16;g.add(chargeRing);
   }
-  g.userData={kind,parts:{marker,ground,flame,smoke,chargeRing} satisfies FireParts,cell};
+  g.userData={kind,parts:{marker,ground,flame,outer,core,smoke,arc,light,chargeRing} satisfies FireParts,cell};
   return g;
 }
 function disposeFireObject(object:THREE.Object3D){
@@ -580,24 +591,37 @@ function syncDynamic(){
     const kind=game.fireKinds.get(id)??'normal';
     if(obj&&obj.userData.kind!==kind){effects.remove(obj);disposeFireObject(obj);fireObjects.delete(id);obj=undefined;}
     if(!obj){const [x,y]=id.split(',').map(Number);obj=fireObject(kind,firePatterns.get(id));obj.position.copy(world({x,y}));effects.add(obj);fireObjects.set(id,obj);}
-    const age=0.56-ttl,cell=obj.userData.cell as BlastCell|undefined;
+    const age=FIRE_DURATION-ttl,cell=obj.userData.cell as BlastCell|undefined;
     const distance=cell?.distance??0;
     const opening=Math.max(0,Math.min(1,(age-distance*0.035)/0.085));
     const closing=Math.min(1,ttl/0.14);
     const parts=obj.userData.parts as FireParts;
+    const seed=Math.abs((cell?.x??0)*13+(cell?.y??0)*7)%11;
     (parts.marker.material as THREE.MeshBasicMaterial).opacity=(0.17+0.08*opening)*closing;
     (parts.ground.material as THREE.MeshBasicMaterial).opacity=(0.35+0.25*opening)*closing;
     parts.ground.scale.setScalar(0.9+0.15*opening);
     parts.ground.rotation.z=age*0.6+distance*0.5;
     parts.flame.material.uniforms.uTime.value=age;
-    parts.flame.material.uniforms.uOpacity.value=(0.35+0.65*opening)*closing;
+    parts.flame.material.uniforms.uOpacity.value=(0.55+0.45*opening)*closing;
     parts.flame.scale.setScalar(0.85+0.15*opening);
+    const billow=Math.max(0,Math.min(1,(age-distance*0.025)/0.09))*closing;
+    const sway=Math.sin(age*21+seed*1.3);
+    parts.outer.material.opacity=0.82*billow;
+    parts.outer.material.rotation=age*0.65+seed*0.24;
+    parts.outer.scale.set((cell?.direction?1.35:1.45)*(0.65+0.35*billow), (cell?.direction?1.1:1.2)*(0.72+0.28*billow)+0.06*sway,1);
+    parts.outer.position.set(Math.sin(seed*2.3)*0.07,0.36+0.07*sway,Math.cos(seed*1.9)*0.07);
+    parts.core.material.opacity=0.64*billow;
+    parts.core.material.rotation=-age*0.75-seed*0.17;
+    parts.core.scale.set((cell?.direction?1.05:1.15)*(0.6+0.4*billow), (cell?.direction?0.9:0.95)*(0.65+0.35*billow),1);
+    parts.core.position.y=0.48+0.045*Math.sin(age*26+seed);
     parts.smoke.material.opacity=0.22*Math.max(0,Math.min(1,(age-0.18)/0.12))*closing;
     parts.smoke.scale.set(0.76+age*0.45,0.63+age*0.35,1);
     parts.smoke.position.y=0.43+age*0.3;
+    if(parts.arc){parts.arc.material.opacity=0.62*billow*(Math.sin(age*65+distance*3)>0?1:0.24);parts.arc.material.rotation=age*9+distance;}
+    if(parts.light)parts.light.intensity=3.3*opening*Math.max(0,1-age/0.32);
     if(parts.chargeRing){
-      (parts.chargeRing.material as THREE.MeshBasicMaterial).opacity=(0.3+0.55*opening)*closing;
-      parts.chargeRing.scale.setScalar(0.75+0.55*Math.abs(Math.sin(age*22)));
+      (parts.chargeRing.material as THREE.MeshBasicMaterial).opacity=0.55*opening*Math.max(0,1-age/0.32);
+      parts.chargeRing.scale.setScalar(0.6+1.1*Math.min(1,age/0.32));
     }
   }
   for(const [id,obj] of fireObjects)if(!game.fire.has(id)){effects.remove(obj);disposeFireObject(obj);fireObjects.delete(id);firePatterns.delete(id);}
@@ -795,11 +819,14 @@ function frame(now:number){
   for(const event of game.drainEvents()){
     if(event.type==='explode'){
       const kind=event.kind??'normal',palette=blastPalette[kind];
-      for(const cell of event.cells??[]){firePatterns.set(key(cell.x,cell.y),cell);if(cell.distance>0)burst(cell.x,cell.y,palette.spark,2);}
+      for(const cell of event.cells??[]){
+        firePatterns.set(key(cell.x,cell.y),cell);
+        if(cell.distance>0)burst(cell.x,cell.y,palette.spark,2);
+        transientSprite(cell.x,cell.y,fxTextures.smoke,'#536078',{height:0.46,delay:0.3+cell.distance*0.025,duration:0.55,opacity:0.18,startScale:0.32,endScale:1.02,velocity:new THREE.Vector3(0,0.25,0),additive:false});
+      }
       burst(event.x,event.y,palette.spark,kind==='normal'?8:12);
       shockwave(event.x,event.y,palette.edge,kind==='powered'?1.2:1);
       transientSprite(event.x,event.y,fxTextures.flare,palette.core,{height:0.72,duration:0.13,opacity:0.65,startScale:0.35,endScale:1.35});
-      transientSprite(event.x,event.y,fxTextures.smoke,'#536078',{height:0.72,delay:0.24,duration:0.62,opacity:0.3,startScale:0.4,endScale:1.08,velocity:new THREE.Vector3(0,0.3,0),additive:false});
       markScorch(event.x,event.y);
       cameraJolt=Math.min(0.13,cameraJolt+(kind==='powered'?0.085:0.055));
       stage.classList.remove('blast-impact');void stage.offsetWidth;
