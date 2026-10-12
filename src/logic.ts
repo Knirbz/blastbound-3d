@@ -3,6 +3,7 @@ export const HEIGHT = 11;
 export const PLAYER_SPEED = 3.1; // tiles per second
 export const ENEMY_SPEED = 1.45;
 export const BOMB_FUSE = 2.8;
+export const FIRE_DURATION = 0.56;
 export type Difficulty = 'training' | 'easy' | 'medium' | 'hard';
 const difficultySettings: Record<Difficulty, { speed: number; focus: number; cooldown: number; range: number }> = {
   training: { speed: 0, focus: 0, cooldown: Infinity, range: 0 },
@@ -242,7 +243,7 @@ export class Game {
     const ignite = (x:number,y:number,distance:number,direction:Direction|null) => {
       cells.push({x,y,distance,direction});
       const key=Game.key(x,y);
-      this.fire.set(key,0.56);
+      this.fire.set(key,FIRE_DURATION);
       const priority:Record<BlastKind,number>={normal:0,chain:1,powered:2};
       const previous=this.fireKinds.get(key);
       if(!previous || priority[kind]>=priority[previous])this.fireKinds.set(key,kind);
