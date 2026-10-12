@@ -33,6 +33,12 @@
 .pause-card h2{font-size:clamp(38px,5vw,54px)}
 .pause-mode{margin:12px 0 20px;color:#bbd0e7;font-size:14px}
 .shield-hud{color:#83c9ff;text-shadow:0 0 9px #5aa9ff}
+.active-items{position:absolute;z-index:2;top:8px;right:8px;max-width:min(55%,370px);padding:5px 8px;border:1px solid #82efd59a;border-radius:7px;background:#162b43de;color:#e2fff7;text-align:right;font-family:'Barlow Condensed',Impact,sans-serif;font-size:12px;font-weight:800;letter-spacing:.5px;pointer-events:none}
+.touch-actions{display:flex;align-items:center;gap:8px}
+.mobile-controls .touch-action{width:65px;height:65px;border-radius:50%;background:linear-gradient(150deg,#8b9df5,#4d6cae);border-color:#bec8ff;color:white;font-family:'Barlow Condensed',Impact,sans-serif;font-size:14px;line-height:1;font-weight:800}
+.item-guide{margin-top:12px;padding:10px 12px;border:1px solid #3f5c70;border-radius:10px;background:#20324c;color:#bcd0e2;font-size:12px;line-height:1.55}.item-guide summary{cursor:pointer;color:#9ff1df;font-family:'Barlow Condensed',Impact,sans-serif;font-size:14px;font-weight:800;letter-spacing:1px}.item-guide p{margin:8px 0 0}
+@media(max-width:390px){.mobile-controls .touch-action{width:56px;height:56px;font-size:12px}.mobile-controls .touch-bomb{width:78px;height:78px}.active-items{font-size:10px;max-width:65%}}
+@media(max-width:350px) and (max-height:650px){.stage.game-active{height:250px;min-height:250px}}
 @media(min-width:761px){
   .stage{height:clamp(500px,calc(100dvh - 240px),650px);min-height:0;flex:none}
   #intro .intro-card{padding:17px 24px}

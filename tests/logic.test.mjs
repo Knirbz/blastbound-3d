@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Game, PLAYER_SPEED, ENEMY_SPEED, BOMB_FUSE } from '../src/logic.ts';
+import { Game, PLAYER_SPEED, ENEMY_SPEED, BOMB_FUSE, CLASSIC_UPGRADES } from '../src/logic.ts';
+
+function openArena(game){for(const row of game.tiles)row.fill(0);game.difficulty='training';game.enemies.slice(1).forEach(enemy=>enemy.alive=false);game.enemies[0].x=11;game.enemies[0].y=9;}
+function collect(game,type){game.upgrades.push({x:game.player.x,y:game.player.y,type});game.move(1,0,1/60,'right');}
 
 test('a placed bomb ticks for the full fuse before exploding', () => {
   const game = new Game(2); game.start();
@@ -203,4 +206,90 @@ test('player needs all enemies defeated and the portal cleared to win', () => {
   game.tiles[game.portal.y][game.portal.x]=0;
   game.update(0.01);
   assert.equal(game.status,'won');
+});
+
+test('the complete classic item set is available',()=>{
+  assert.deepEqual(CLASSIC_UPGRADES,['range','capacity','speed','remote','bombPass','blockPass','glove','kick','heart','maxRange','powerBomb','pierce','slime','skull']);
+});
+
+test('speed, heart, max range and one shot power bomb change player stats',()=>{
+  const game=new Game(31);game.start();openArena(game);
+  game.player.lives=2;
+  for(const type of ['speed','heart','maxRange','powerBomb'])collect(game,type);
+  assert.equal(game.player.speed,1);assert.equal(game.player.lives,3);assert.equal(game.player.range,9);
+  assert.equal(game.placeBomb(),true);assert.equal(game.bombs[0].range,9);assert.equal(game.player.powerBomb,false);
+});
+
+test('remote bombs wait for the action key and chain into other bombs',()=>{
+  const game=new Game(32);game.start();openArena(game);
+  collect(game,'remote');game.player.x=3;game.player.y=3;
+  assert.equal(game.placeBomb(),true);
+  assert.equal(game.bombs[0].remote,true);
+  game.player.x=5;game.player.y=5;
+  for(let i=0;i<40;i++)game.update(0.1);
+  assert.equal(game.bombs.length,1);
+  assert.equal(game.useAction(),true);assert.equal(game.bombs.length,0);
+  assert.equal(game.fire.has('3,3'),true);
+});
+
+test('losing remote control turns placed bombs back into timed bombs',()=>{
+  const game=new Game(38);game.start();openArena(game);
+  collect(game,'remote');game.player.x=3;game.player.y=3;game.placeBomb();
+  game.player.x=1;game.player.y=1;game.fire.set('1,1',0.5);game.update(0.01);
+  assert.equal(game.player.remote,false);assert.equal(game.bombs[0].remote,false);
+  for(let i=0;i<13;i++)game.update(0.1);
+  assert.equal(game.bombs.length,0);
+});
+
+test('bomb pass and block pass allow movement through their obstacles',()=>{
+  const game=new Game(33);game.start();openArena(game);
+  game.player.x=1;game.player.y=1;game.tiles[1][2]=2;
+  for(let i=0;i<20;i++)game.move(1,0,1/60,'right');
+  assert.ok(game.player.x<1.3);
+  game.player.x=1;game.player.y=3;collect(game,'blockPass');game.player.x=1;game.player.y=1;
+  for(let i=0;i<20;i++)game.move(1,0,1/60,'right');
+  assert.ok(game.player.x>2);
+  collect(game,'bombPass');
+  game.bombs.push({x:3,y:1,id:99,range:1,fuse:2,ownerPass:false});
+  for(let i=0;i<20;i++)game.move(1,0,1/60,'right');
+  assert.ok(game.player.x>3);
+});
+
+test('kick moves a bomb, glove carries and throws it, slime bounces',()=>{
+  const game=new Game(34);game.start();openArena(game);
+  collect(game,'kick');collect(game,'glove');collect(game,'slime');
+  game.player.x=1;game.player.y=1;game.bombs.push({x:2,y:1,id:100,range:1,fuse:2,ownerPass:false,slime:true});
+  for(let i=0;i<12;i++)game.move(1,0,1/60,'right');
+  assert.equal(game.bombs[0].moving,'right');
+  game.update(0.1);game.update(0.03);assert.equal(game.bombs[0].x,3);
+  assert.equal(game.useAction(),true);assert.equal(game.bombs[0].moving,undefined);
+  game.player.x=3;game.player.y=1;
+  assert.equal(game.useAction(),true);assert.equal(game.carriedBombId,100);
+  game.player.facing='right';assert.equal(game.useAction(),true);
+  assert.equal(game.carriedBombId,null);assert.equal(game.bombs[0].moving,'right');
+  game.tiles[1][game.bombs[0].x+1]=1;game.update(0.1);game.update(0.03);
+  assert.equal(game.bombs[0].moving,'left');
+});
+
+test('holding a direction keeps a kicked bomb moving during frame updates',()=>{
+  const game=new Game(37);game.start();openArena(game);
+  collect(game,'kick');game.player.x=1;game.player.y=1;
+  game.bombs.push({x:2,y:1,id:101,range:1,fuse:2,ownerPass:false});
+  for(let i=0;i<24;i++){game.move(1,0,1/60,'right');game.update(1/60);}
+  assert.ok(game.bombs[0].x>=3);
+});
+
+test('super bombs pierce crates while ordinary bombs stop at the first',()=>{
+  const game=new Game(35);game.start();openArena(game);
+  game.tiles[3][4]=2;game.tiles[3][5]=2;
+  game.player.x=3;game.player.y=3;collect(game,'pierce');game.player.x=3;game.player.y=3;
+  game.player.range=3;game.placeBomb();game.bombs[0].fuse=0.01;game.player.x=1;game.player.y=1;game.update(0.02);
+  assert.equal(game.tiles[3][4],0);assert.equal(game.tiles[3][5],0);
+  assert.equal(game.fire.has('6,3'),true);
+});
+
+test('a skull causes a temporary curse and another pickup cures it',()=>{
+  const game=new Game(36);game.start();openArena(game);
+  collect(game,'skull');assert.equal(game.player.curse,8);assert.ok(game.player.curseType);
+  collect(game,'range');assert.equal(game.player.curse,0);assert.equal(game.player.curseType,null);
 });
