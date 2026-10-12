@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#101629" />
+    <meta name="description" content="Blastbound 3D – ein farbenfrohes Bomberman-inspiriertes 2,5D-Arcade-Spiel." />
+    <title>Blastbound 3D</title>
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="brand"><span class="brand-mark">✦</span><span>BLASTBOUND <b>3D</b></span></div>
+        <div class="topbar-right"><span class="eyebrow">ARCADE ARENA</span><button id="sound-button" class="icon-button" type="button" aria-label="Ton umschalten" title="Ton umschalten">♪</button></div>
+      </header>
+      <main>
+        <section class="game-panel" aria-label="Spielbereich">
+          <div class="hud">
+            <div class="hud-stat"><span class="hud-label">LEBEN</span><span id="lives" class="hearts" aria-label="3 Leben">♥ ♥ ♥</span></div>
+            <div class="hud-stat"><span class="hud-label">GEGNER</span><span id="enemies" class="hud-value">03</span></div>
+            <div class="hud-stat"><span class="hud-label">BOMBEN</span><span id="bombs" class="hud-value">1 / 1</span></div>
+            <div class="hud-stat"><span class="hud-label">ZEIT</span><span id="timer" class="hud-value">00:00</span></div>
+            <button id="pause-button" class="pause-button" type="button" aria-label="Spiel pausieren">Ⅱ <span>PAUSE</span></button>
+          </div>
+          <div id="stage" class="stage">
+            <canvas id="game-canvas" aria-label="Blastbound 3D Spielfeld"></canvas>
+            <div id="intro" class="overlay">
+              <div class="intro-card">
+                <div class="intro-icon">✦</div>
+                <p class="overline">WILLKOMMEN IN DER ARENA</p>
+                <h1>BLAST<span>BOUND</span></h1>
+                <p class="intro-copy">Sprenge Kisten, locke Gegner in die Kreuzexplosion und erreiche das Portal.</p>
+                <button id="start-button" class="primary-button" type="button">SPIEL STARTEN <span>→</span></button>
+                <p class="quick-controls">WASD / Pfeiltasten bewegen · Leertaste legt Bombe</p>
+              </div>
+            </div>
+            <div id="result" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="result-title">
+              <div class="intro-card result-card"><p id="result-kicker" class="overline"></p><h2 id="result-title"></h2><p id="result-copy" class="intro-copy"></p><button id="restart-button" class="primary-button" type="button">NOCH MAL SPIELEN <span>↻</span></button></div>
+            </div>
+            <div id="toast" class="toast hidden" role="status"></div>
+          </div>
+          <div class="stage-footer"><span><i class="legend-dot player-dot"></i> DU</span><span><i class="legend-dot enemy-dot"></i> GEGNER</span><span><i class="legend-dot portal-dot"></i> PORTAL</span><span class="goal">ZERSTÖRE ALLE GEGNER → ERREICHE DAS PORTAL</span></div>
+        </section>
+        <aside class="side-panel">
+          <div class="panel-header"><span class="panel-line"></span><span>SO SPIELST DU</span></div>
+          <h2>Clevere Züge.<br /><em>Großer Knall.</em></h2>
+          <p>Jede Bombe verändert das Labyrinth. Plane deinen Fluchtweg, bevor der Countdown abläuft.</p>
+          <div class="control-list"><div class="control-row"><span>BEWEGEN</span><div class="key-group"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><small>oder</small><kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd></div></div><div class="control-row"><span>BOMBE LEGEN</span><kbd class="space-key">LEERTASTE</kbd></div><div class="control-row"><span>PAUSE</span><kbd>P</kbd></div></div>
+          <div class="tip"><span class="tip-icon">✧</span><div><b>PRO-TIPP</b><p>Kisten können Upgrades verbergen. Flammen reichen 2 Felder weit und stoppen an der ersten Kiste.</p></div></div>
+          <div class="mobile-controls" aria-label="Touch-Steuerung"><div class="dpad"><button data-dir="up" aria-label="Nach oben">↑</button><div><button data-dir="left" aria-label="Nach links">←</button><button data-dir="down" aria-label="Nach unten">↓</button><button data-dir="right" aria-label="Nach rechts">→</button></div></div><button id="touch-bomb" class="touch-bomb" aria-label="Bombe legen">BOMBE<br />●</button></div>
+        </aside>
+      </main>
+      <footer class="page-footer"><span>BLASTBOUND 3D © 2026</span><span>13 × 11 ARENA · THREE.JS</span></footer>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
