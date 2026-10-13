@@ -353,6 +353,24 @@ test('the foundry is a distinct selectable arena with clear conveyor lanes',()=>
   game.start();game.setMap('foundry');assert.equal(game.map,'courtyard');
 });
 
+test('panorama arena expands the grid while preserving corner spawns and one-cell corridors',()=>{
+  const game=new Game(401,'training','panorama');
+  assert.equal(game.width,19);
+  assert.equal(game.tiles.length,11);
+  assert.ok(game.tiles.every(row=>row.length===19));
+  assert.equal(game.tile(18,5),1);
+  assert.equal(game.tile(16,2),1);
+  for(const [x,y] of [[1,1],[17,1],[1,9],[17,9],[16,9]])assert.equal(game.tile(x,y),0);
+  for(const y of [3,7])for(let x=3;x<=15;x++)assert.equal(game.tile(x,y),0);
+  assert.deepEqual(game.enemies.map(({x,y})=>({x,y})),[{x:17,y:1},{x:1,y:9},{x:17,y:9}]);
+  assert.deepEqual(game.portal,{x:15,y:5});
+  game.onlineMatch=true;game.reset(401);
+  for(const [x,y] of [[1,5],[17,5],[9,1],[9,9],[9,5]])assert.equal(game.tile(x,y),0);
+  game.setMap('courtyard');
+  assert.equal(game.width,13);
+  assert.ok(game.tiles.every(row=>row.length===13));
+});
+
 test('foundry conveyors transport a bomb while its fuse continues to tick',()=>{
   const game=new Game(41,'training','foundry');game.start();
   game.player.x=4;game.player.y=3;

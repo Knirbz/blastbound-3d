@@ -1,11 +1,12 @@
 export const WIDTH = 13;
+export const WIDE_WIDTH = 19;
 export const HEIGHT = 11;
 export const PLAYER_SPEED = 3.1; // tiles per second
 export const ENEMY_SPEED = 1.45;
 export const BOMB_FUSE = 2.8;
 export const FIRE_DURATION = 0.56;
 export type Difficulty = 'training' | 'easy' | 'medium' | 'hard';
-export type MapType = 'courtyard' | 'foundry' | 'market' | 'graveyard' | 'pirate' | 'lobby';
+export type MapType = 'courtyard' | 'foundry' | 'market' | 'graveyard' | 'pirate' | 'panorama' | 'lobby';
 const difficultySettings: Record<Difficulty, { speed: number; focus: number; cooldown: number; range: number }> = {
   training: { speed: 0, focus: 0, cooldown: Infinity, range: 0 },
   easy: { speed: 0.95, focus: 0.35, cooldown: 6, range: 1 },
@@ -75,20 +76,21 @@ export class Game {
   private enemyId = 0;
 
   constructor(seed = Date.now(), difficulty: Difficulty = 'easy', map: MapType = 'courtyard') { this.difficulty=difficulty;this.map=map;this.reset(seed); }
+  get width() { return this.map === 'panorama' ? WIDE_WIDTH : WIDTH; }
   private rand() { this.randomState = (Math.imul(this.randomState, 1664525) + 1013904223) >>> 0; return this.randomState / 4294967296; }
   static key(x: number, y: number) { return `${x},${y}`; }
-  inBounds(x: number, y: number) { return x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT; }
+  inBounds(x: number, y: number) { return x >= 0 && x < this.width && y >= 0 && y < HEIGHT; }
   tile(x: number, y: number): Tile { return this.inBounds(x, y) ? this.tiles[y][x] : 1; }
   reset(seed = Date.now()) {
     this.randomState = seed >>> 0;
     this.lobbySpawnTimer=4.5;
-    this.portal=this.map==='foundry'||this.map==='market'?{x:9,y:5}:this.map==='graveyard'||this.map==='pirate'?{x:7,y:5}:{x:9,y:7};
+    this.portal=this.map==='panorama'?{x:15,y:5}:this.map==='foundry'||this.map==='market'?{x:9,y:5}:this.map==='graveyard'||this.map==='pirate'?{x:7,y:5}:{x:9,y:7};
     this.ghostGraves=this.map==='graveyard'?[{x:3,y:3},{x:9,y:7}]:[];
     this.cannonLanes=this.map==='pirate'?[{x:2,y:3,direction:'right',endX:10},{x:10,y:7,direction:'left',endX:2}]:[];
     this.cannonShots=[];this.cannonWarning=null;this.cannonCountdown=4.2;this.nextCannonLane=0;this.cannonPlayerHit=false;
-    this.tiles = Array.from({ length: HEIGHT }, (_, y) => Array.from({ length: WIDTH }, (_, x): Tile => {
+    this.tiles = Array.from({ length: HEIGHT }, (_, y) => Array.from({ length: this.width }, (_, x): Tile => {
       if(this.map==='lobby')return x<=2||x>=10||y<=1||y>=9?1:0;
-      if (x === 0 || y === 0 || x === WIDTH - 1 || y === HEIGHT - 1) return 1;
+      if (x === 0 || y === 0 || x === this.width - 1 || y === HEIGHT - 1) return 1;
       if(this.map==='foundry'){
         if(x%3===0&&y%2===0)return 1;
         return this.rand()<0.59?2:0;
@@ -96,9 +98,17 @@ export class Game {
       if(x%2===0&&y%2===0)return 1;
       return this.rand()<(this.map==='market'?0.61:this.map==='graveyard'?0.62:0.64)?2:0;
     }));
-    const safe = [[1,1],[2,1],[1,2],[11,1],[10,1],[11,2],[1,9],[2,9],[1,8],[11,9],[10,9],[11,8]];
+    const right=this.width-2;
+    const safe = [[1,1],[2,1],[1,2],[right,1],[right-1,1],[right,2],[1,9],[2,9],[1,8],[right,9],[right-1,9],[right,8]];
     if(this.map!=='lobby')for (const [x,y] of safe) this.tiles[y][x] = 0;
-    if(this.onlineMatch)for(const [x,y] of [[1,5],[2,5],[1,4],[1,6],[11,5],[10,5],[11,4],[11,6],[5,1],[4,1],[5,2],[7,9],[6,9],[7,8],[6,5],[5,5],[7,5]])this.tiles[y][x]=0;
+    if(this.onlineMatch){
+      const spawns=this.map==='panorama'?[[1,5],[right,5],[9,1],[9,9],[9,5]]:[[1,5],[right,5],[5,1],[7,9],[6,5]];
+      for(const [x,y] of spawns)for(const [cx,cy] of [[x,y],[x-1,y],[x+1,y],[x,y-1],[x,y+1]])if(this.inBounds(cx,cy)&&this.tiles[cy][cx]!==1)this.tiles[cy][cx]=0;
+    }
+    if(this.map==='panorama'){
+      // Zwei lange Quergänge bilden den Weitwinkel-Twist, die übrigen Gänge bleiben eine Kachel breit.
+      for(const y of [3,7])for(let x=3;x<=15;x++)if(this.tiles[y][x]!==1)this.tiles[y][x]=0;
+    }
     this.conveyors.clear();
     if(this.map==='foundry')for(const [y,direction] of [[3,'right'],[7,'left']] as const)for(let x=3;x<=9;x++){
       this.conveyors.set(Game.key(x,y),direction);
@@ -124,7 +134,7 @@ export class Game {
     if(this.map!=='lobby')this.tiles[this.portal.y][this.portal.x] = 2;
     this.fire.clear(); this.fireKinds.clear(); this.bombs = []; this.upgrades = []; this.events = []; this.carriedBombId = null;this.autoBombTimer=0;
     this.player = { x: this.map==='lobby'?6:1, y: this.map==='lobby'?5:1, lives: 3, shield: 0, invincible: 0, range: 1, capacity: 1, speed: 0, remote: false, bombPass: false, blockPass: false, glove: false, kick: false, powerBomb: false, pierce: false, slime: false, curse: 0, curseType: null, facing: 'down' };
-    this.enemies = this.map==='lobby'?[]:[{x:11,y:1},{x:1,y:9},{x:11,y:9}].map(p => ({ ...p, targetX:p.x, targetY:p.y, id: ++this.enemyId, moveTimer: 0.45 + this.rand() * 0.2, bombCooldown: 1.8 + this.rand() * 1.4, escapePath: [], alive: true, facing: 'down' as Direction }));
+    this.enemies = this.map==='lobby'?[]:[{x:right,y:1},{x:1,y:9},{x:right,y:9}].map(p => ({ ...p, targetX:p.x, targetY:p.y, id: ++this.enemyId, moveTimer: 0.45 + this.rand() * 0.2, bombCooldown: 1.8 + this.rand() * 1.4, escapePath: [], alive: true, facing: 'down' as Direction }));
     if(this.map==='lobby'&&!this.onlineLobby)for(let i=0;i<3;i++)this.spawnLobbyUpgrade();
     this.status = 'ready'; this.elapsed = 0;
   }

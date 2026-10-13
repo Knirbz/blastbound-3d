@@ -27,7 +27,7 @@
             <div class="lobby-actions"><button id="lobby-share" type="button">EINLADUNG TEILEN</button><button id="lobby-menu" type="button">MENÜ</button></div>
           </div>
           <div id="lobby-match-panel" class="lobby-match-panel hidden" aria-label="Match vorbereiten">
-            <div class="lobby-match-settings"><label for="lobby-map">ARENA<select id="lobby-map"><option value="courtyard">BURGHOF</option><option value="foundry">WERKHALLE</option><option value="market">KASSENCHAOS</option><option value="graveyard">SPUKFRIEDHOF</option><option value="pirate">KANONENBUCHT</option></select></label><label class="lobby-cpu-choice"><input id="lobby-add-cpu" type="checkbox" /> 1 CPU DAZU</label></div>
+            <div class="lobby-match-settings"><label for="lobby-map">ARENA<select id="lobby-map"><option value="courtyard">BURGHOF</option><option value="foundry">WERKHALLE</option><option value="market">KASSENCHAOS</option><option value="graveyard">SPUKFRIEDHOF</option><option value="pirate">KANONENBUCHT</option><option value="panorama">PANORAMA-HOF · 19 × 11</option></select></label><label class="lobby-cpu-choice"><input id="lobby-add-cpu" type="checkbox" /> 1 CPU DAZU</label></div>
             <div id="lobby-ready-list" class="lobby-ready-list" aria-live="polite"></div>
             <div class="lobby-match-actions"><button id="lobby-ready" type="button">READY</button><button id="lobby-start" type="button">MATCH STARTEN</button></div>
           </div>
@@ -97,6 +97,7 @@
                     <button type="button" data-map="market">KASSENCHAOS</button>
                     <button type="button" data-map="graveyard">SPUKFRIEDHOF</button>
                     <button type="button" data-map="pirate">KANONENBUCHT</button>
+                    <button type="button" data-map="panorama">PANORAMA-HOF · 19 × 11</button>
                   </div>
                   <p id="map-hint" class="map-hint" aria-live="polite"></p>
                 </fieldset>
@@ -136,7 +137,7 @@
           <details class="item-guide"><summary>POWER-UPS ANSEHEN</summary><p>Feuerkraft +1 · seltene Feuerkraft +2 · Bombenzahl · Tempo · Fernzünder · Bombenpass · Blockpass · Handschuh · Kick · Herz · maximale Feuerkraft · Power-Bombe · Superbombe · Schleimbombe · Schädel · Schild</p></details>
         </aside>
       </main>
-      <footer class="page-footer"><span>BLASTBOUND 3D © 2026</span><span>13 × 11 ARENA · THREE.JS</span></footer>
+      <footer class="page-footer"><span>BLASTBOUND 3D © 2026</span><span>13 × 11 / 19 × 11 ARENEN · THREE.JS</span></footer>
     </div>
     <div id="asset-loading" class="asset-loading" role="status" aria-live="polite"><strong>BLASTBOUND 3D</strong><span>3D-ASSETS WERDEN GELADEN…</span></div>
     <script type="module" src="/src/main.ts"></script>

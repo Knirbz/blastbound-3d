@@ -4,7 +4,8 @@ const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const upgradePool = ['range', 'range', 'range', 'range', 'range2', 'capacity', 'speed', 'remote', 'bombPass', 'glove', 'kick', 'maxRange', 'powerBomb', 'pierce', 'slime', 'shield'];
 const initialSpawns = [{ x: 6, y: 5 }, { x: 4, y: 3 }, { x: 8, y: 7 }, { x: 8, y: 3 }, { x: 4, y: 7 }, { x: 6, y: 3 }, { x: 6, y: 7 }, { x: 4, y: 5 }];
 const matchSpawns = [{ x: 1, y: 1 }, { x: 11, y: 9 }, { x: 11, y: 1 }, { x: 1, y: 9 }, { x: 1, y: 5 }, { x: 11, y: 5 }, { x: 5, y: 1 }, { x: 7, y: 9 }];
-const matchMaps = new Set(['courtyard', 'foundry', 'market', 'graveyard', 'pirate']);
+const wideMatchSpawns = [{ x: 1, y: 1 }, { x: 17, y: 9 }, { x: 17, y: 1 }, { x: 1, y: 9 }, { x: 1, y: 5 }, { x: 17, y: 5 }, { x: 9, y: 1 }, { x: 9, y: 9 }];
+const matchMaps = new Set(['courtyard', 'foundry', 'market', 'graveyard', 'pirate', 'panorama']);
 const validCharacter = /^character-(?:female|male)-[abc]$/;
 const response = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', ...headers } });
 
@@ -162,14 +163,14 @@ export class LobbyRoom extends DurableObject {
       for (let i = 0; i < this.ctx.getWebSockets().length; i++) {
         const peer = this.ctx.getWebSockets()[i], member = peer.deserializeAttachment();
         if (!member) continue;
-        Object.assign(member, matchSpawns[i], { eliminated: false, moving: false, facing: 'down' }); peer.serializeAttachment(member);
+        Object.assign(member, (room.settings.map === 'panorama' ? wideMatchSpawns : matchSpawns)[i], { eliminated: false, moving: false, facing: 'down' }); peer.serializeAttachment(member);
       }
       await this.save(room);
       this.broadcast({ type: 'start', players: this.players(), settings: room.settings, seed: room.seed });
       return;
     }
     if (message.type === 'world' && room.phase === 'match' && player.id === room.hostId) {
-      if (!Array.isArray(message.tiles) || message.tiles.length !== 11 || !Array.isArray(message.upgrades) || !Array.isArray(message.enemies)) return;
+      if (!Array.isArray(message.tiles) || message.tiles.length !== 11 || !message.tiles.every(row => Array.isArray(row) && row.length === (room.settings.map === 'panorama' ? 19 : 13)) || !Array.isArray(message.upgrades) || !Array.isArray(message.enemies)) return;
       this.broadcast({ type: 'world', tiles: message.tiles, upgrades: message.upgrades, enemies: message.enemies, cannonShots: message.cannonShots || [], cannonWarning: message.cannonWarning || null }, socket);
       room.cpuAlive = !!room.settings.cpu && message.enemies.some(enemy => enemy.alive);
       await this.finishIfDecided(room);
@@ -184,15 +185,16 @@ export class LobbyRoom extends DurableObject {
     }
     if (message.type === 'position') {
       const match = room.phase === 'match';
+      const maxX = match && room.settings.map === 'panorama' ? 17 : 11;
       if (match && player.eliminated) return;
-      if (![message.x, message.y].every(Number.isFinite) || message.x < (match ? 0.7 : 2.7) || message.x > (match ? 11.3 : 9.3) || message.y < (match ? 0.7 : 1.7) || message.y > (match ? 9.3 : 8.3)) return;
+      if (![message.x, message.y].every(Number.isFinite) || message.x < (match ? 0.7 : 2.7) || message.x > (match ? maxX + 0.3 : 9.3) || message.y < (match ? 0.7 : 1.7) || message.y > (match ? 9.3 : 8.3)) return;
       if (!['up', 'down', 'left', 'right'].includes(message.facing)) return;
       player.x = message.x; player.y = message.y; player.facing = message.facing; player.moving = !!message.moving;
       socket.serializeAttachment(player);
       this.broadcast({ type: 'player', player }, socket);
       let movedBomb = false;
       if (Array.isArray(message.bombs)) for (const update of message.bombs.slice(0, 18)) {
-        if (typeof update.networkId !== 'string' || !Number.isInteger(update.x) || !Number.isInteger(update.y) || update.x < (match ? 1 : 3) || update.x > (match ? 11 : 9) || update.y < (match ? 1 : 2) || update.y > (match ? 9 : 8)) continue;
+        if (typeof update.networkId !== 'string' || !Number.isInteger(update.x) || !Number.isInteger(update.y) || update.x < (match ? 1 : 3) || update.x > (match ? maxX : 9) || update.y < (match ? 1 : 2) || update.y > (match ? 9 : 8)) continue;
         const bomb = room.bombs.find(item => item.networkId === update.networkId);
         if (bomb && bomb.ownerId !== player.id && bomb.moverId !== player.id && Math.hypot(player.x - bomb.x, player.y - bomb.y) > 1.5) continue;
         if (bomb && (bomb.x !== update.x || bomb.y !== update.y)) {
@@ -224,8 +226,9 @@ export class LobbyRoom extends DurableObject {
     if (message.type === 'bomb') {
       const { x, y, id } = message;
       const match = room.phase === 'match';
+      const maxX = match && room.settings.map === 'panorama' ? 17 : 11;
       const bot = match && player.id === room.hostId && message.bot === true;
-      if (player.eliminated || ![x, y, id].every(Number.isInteger) || x < (match ? 1 : 3) || x > (match ? 11 : 9) || y < (match ? 1 : 2) || y > (match ? 9 : 8) || !bot && Math.hypot(player.x - x, player.y - y) > 1.2) return;
+      if (player.eliminated || ![x, y, id].every(Number.isInteger) || x < (match ? 1 : 3) || x > (match ? maxX : 9) || y < (match ? 1 : 2) || y > (match ? 9 : 8) || !bot && Math.hypot(player.x - x, player.y - y) > 1.2) return;
       if (room.bombs.filter(bomb => bomb.ownerId === player.id).length >= 9) return;
       const ownerId = bot ? 'cpu' : player.id;
       const networkId = `${ownerId}:${id}`;

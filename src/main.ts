@@ -39,8 +39,8 @@ const difficultyDescriptions:Record<Difficulty,string>={
 };
 const difficultyNames:Record<Difficulty,string>={training:'Training',easy:'Leicht',medium:'Mittel',hard:'Schwer'};
 type ArenaMap=Exclude<MapType,'lobby'>;
-const mapNames:Record<MapType,string>={courtyard:'Burghof',foundry:'Werkhalle',market:'Kassenchaos',graveyard:'Spukfriedhof',pirate:'Kanonenbucht',lobby:'Übungs-Lobby'};
-const mapDescriptions:Record<ArenaMap,string>={courtyard:'Klassische Kisten und feste Mauern.',foundry:'Förderbänder bewegen gelegte Bomben.',market:'Regale freisprengen. Einkaufswagen fahren Bomben durch die Kassenbahnen.',graveyard:'Bomben auf Spukgräbern erscheinen am anderen Grab.',pirate:'Küstenkanonen feuern abwechselnd durch zwei freie Bahnen.'};
+const mapNames:Record<MapType,string>={courtyard:'Burghof',foundry:'Werkhalle',market:'Kassenchaos',graveyard:'Spukfriedhof',pirate:'Kanonenbucht',panorama:'Panorama-Hof',lobby:'Übungs-Lobby'};
+const mapDescriptions:Record<ArenaMap,string>={courtyard:'Klassische Kisten und feste Mauern.',foundry:'Förderbänder bewegen gelegte Bomben.',market:'Regale freisprengen. Einkaufswagen fahren Bomben durch die Kassenbahnen.',graveyard:'Bomben auf Spukgräbern erscheinen am anderen Grab.',pirate:'Küstenkanonen feuern abwechselnd durch zwei freie Bahnen.',panorama:'19 × 11 Felder fürs Querformat. Zwei lange Quergänge schaffen schnelle Flankenwege.'};
 const characters = [
   {id:'character-female-a',name:'Lina'},
   {id:'character-female-b',name:'Mira'},
@@ -186,36 +186,45 @@ async function loadUpgradeAssets(){
 const mesh=(geometry:THREE.BufferGeometry, material:THREE.Material, shadow=true) => {const o=new THREE.Mesh(geometry,material); o.castShadow=shadow; o.receiveShadow=true; return o;};
 const rounded=(w:number,h:number,d:number,r:number,m:THREE.Material)=>mesh(new RoundedBoxGeometry(w,h,d,3,r),m);
 function disposeVisualGeometry(object:THREE.Object3D){object.traverse(child=>{if(child instanceof THREE.Mesh)child.geometry.dispose();});}
-const world=(p:Point)=>new THREE.Vector3(p.x-(WIDTH-1)/2,0,p.y-(HEIGHT-1)/2);
+const world=(p:Point)=>new THREE.Vector3(p.x-(game.width-1)/2,0,p.y-(HEIGHT-1)/2);
 const facingYaw:Record<Direction,number>={down:0,right:Math.PI/2,up:Math.PI,left:-Math.PI/2};
 const board = new THREE.Group(); scene.add(board);
 const props = new THREE.Group(); scene.add(props);
 const actors = new THREE.Group(); scene.add(actors);
 const effects = new THREE.Group(); scene.add(effects);
-const floorBase=rounded(WIDTH+0.28,0.34,HEIGHT+0.28,0.14,floorEdge); floorBase.position.y=-0.28; floorBase.receiveShadow=true; board.add(floorBase);
+const boardSurface=new THREE.Group();board.add(boardSurface);
+let floorBase:THREE.Mesh;
 const floorCells:THREE.Mesh[]=[];
 const marketFloor=new THREE.Group();board.add(marketFloor);
 const graveyardFloor=new THREE.Group();board.add(graveyardFloor);
 const pirateFloor=new THREE.Group();board.add(pirateFloor);
 const ghostGraveVisuals=new THREE.Group();board.add(ghostGraveVisuals);
 const cannonWarningVisuals=new THREE.Group();board.add(cannonWarningVisuals);
-for(let y=0;y<HEIGHT;y++)for(let x=0;x<WIDTH;x++){
-  const variation=(x*17+y*31+x*y*7)%floorMats.length;
-  const cell=mesh(new THREE.BoxGeometry(0.995,0.07,0.995),floorMats[variation],false);
-  cell.position.set(x-6,-0.07,y-5); cell.receiveShadow=true; board.add(cell);
-  floorCells.push(cell);
-}
 const floorWearMaterial=new THREE.MeshBasicMaterial({map:fxTextures.scratch,color:'#9fb8ca',transparent:true,opacity:0.2,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1});
 const floorDirtMaterial=new THREE.MeshBasicMaterial({map:fxTextures.dirt,color:'#1c2e46',transparent:true,opacity:0.32,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1});
-for(let y=1;y<HEIGHT-1;y++)for(let x=1;x<WIDTH-1;x++){
-  const variant=(x*23+y*19+x*y*11)%17;
-  if(variant>2)continue;
-  const wear=mesh(new THREE.PlaneGeometry(0.72,0.72),variant===0?floorWearMaterial:floorDirtMaterial,false);
-  wear.rotation.x=-Math.PI/2;wear.rotation.z=(x*7+y*3)*0.31;
-  wear.position.set(x-6,0.003,y-5);board.add(wear);
+const rimMaterial=mat('#202d48');
+let rimBase:THREE.Mesh;
+function rebuildBoardSurface(){
+  for(const child of [...boardSurface.children]){boardSurface.remove(child);disposeVisualGeometry(child);}
+  floorCells.length=0;
+  floorBase=rounded(game.width+0.28,0.34,HEIGHT+0.28,0.14,floorEdge);
+  floorBase.position.y=-0.28;floorBase.receiveShadow=true;boardSurface.add(floorBase);
+  for(let y=0;y<HEIGHT;y++)for(let x=0;x<game.width;x++){
+    const variation=(x*17+y*31+x*y*7)%floorMats.length;
+    const cell=mesh(new THREE.BoxGeometry(0.995,0.07,0.995),floorMats[variation],false);
+    cell.position.set(x-(game.width-1)/2,-0.07,y-5);cell.receiveShadow=true;boardSurface.add(cell);floorCells.push(cell);
+  }
+  for(let y=1;y<HEIGHT-1;y++)for(let x=1;x<game.width-1;x++){
+    const variant=(x*23+y*19+x*y*11)%17;
+    if(variant>2)continue;
+    const wear=mesh(new THREE.PlaneGeometry(0.72,0.72),variant===0?floorWearMaterial:floorDirtMaterial,false);
+    wear.rotation.x=-Math.PI/2;wear.rotation.z=(x*7+y*3)*0.31;
+    wear.position.set(x-(game.width-1)/2,0.003,y-5);boardSurface.add(wear);
+  }
+  rimBase=rounded(game.width+1.2,0.34,HEIGHT+1.2,0.22,rimMaterial);
+  rimBase.position.y=-0.55;boardSurface.add(rimBase);
 }
-const rimBase=rounded(WIDTH+1.2,0.34,HEIGHT+1.2,0.22,mat('#202d48'));
-rimBase.position.y=-0.55; board.add(rimBase);
+rebuildBoardSurface();
 const conveyorVisuals=new THREE.Group();board.add(conveyorVisuals);
 function applyMapTheme(){
   const lobby=game.map==='lobby';
@@ -230,7 +239,7 @@ function applyMapTheme(){
   cannonWarningVisuals.visible=pirate;
   for(let i=0;i<floorCells.length;i++){
     floorCells[i].material=(foundry?foundryFloorMats:market?marketFloorMats:graveyard?graveyardFloorMats:pirate?pirateFloorMats:floorMats)[i%4];
-    const x=i%WIDTH,y=Math.floor(i/WIDTH);
+    const x=i%game.width,y=Math.floor(i/game.width);
     floorCells[i].visible=!marketFloor.visible&&!graveyardFloor.visible&&!pirateFloor.visible&&(!lobby||(x>=2&&x<=10&&y>=1&&y<=9));
   }
   floorBase.material=foundry?foundryEdge:market?marketEdge:graveyard?graveyardEdge:pirate?pirateEdge:floorEdge;
@@ -673,7 +682,7 @@ function beginOnlineMatch(message:Extract<RoomMessage,{type:'start'}>){
   game.difficulty='easy';
   game.player.lives=1;
   game.enemies=message.settings.cpu?game.enemies.slice(0,1):[];
-  if(game.enemies[0])Object.assign(game.enemies[0],{x:6,y:5,targetX:6,targetY:5});
+  if(game.enemies[0])Object.assign(game.enemies[0],{x:Math.floor(game.width/2),y:5,targetX:Math.floor(game.width/2),targetY:5});
   const self=roomPlayers.find(player=>player.id===lobbySelfId);
   if(self)Object.assign(game.player,{x:self.x,y:self.y,facing:self.facing});
   clearRemotePlayers();for(const player of roomPlayers)upsertRemotePlayer(player);
@@ -711,7 +720,7 @@ function handleLobbyMessage(message:RoomMessage){
   if(message.type==='ended'){showOnlineResult(message.winnerId);return;}
   if(message.type==='world'&&game.onlineMatchGuest){
     let changed=false;
-    for(let y=0;y<HEIGHT;y++)for(let x=0;x<WIDTH;x++)if(game.tiles[y][x]!==message.tiles[y]?.[x]){game.tiles[y][x]=message.tiles[y][x];changed=true;}
+    for(let y=0;y<HEIGHT;y++)for(let x=0;x<game.width;x++)if(game.tiles[y][x]!==message.tiles[y]?.[x]){game.tiles[y][x]=message.tiles[y][x];changed=true;}
     if(changed)syncStatic();
     game.upgrades=message.upgrades;game.enemies=message.enemies;
     game.cannonShots=message.cannonShots;game.cannonWarning=message.cannonWarning;
@@ -790,7 +799,7 @@ async function loadDungeonAssets(){
       tileModels.set(name,prepareTileModel(gltf,width,height,fullFootprint));
     }catch(error){console.warn(`Kenney ${name} asset unavailable`,error);}
   }));
-  if(game.map==='courtyard'||game.map==='lobby')rebuildStaticProps();
+  if(game.map==='courtyard'||game.map==='panorama'||game.map==='lobby')rebuildStaticProps();
 }
 async function loadMarketAssets(){
   const assets:[MarketProp,number,number][]=[
@@ -936,7 +945,7 @@ function tileModel(x:number,y:number,tile:1|2){
     return model;
   }
   if(game.map==='graveyard'){
-    const corner=(x===0||x===WIDTH-1)&&(y===0||y===HEIGHT-1);
+    const corner=(x===0||x===game.width-1)&&(y===0||y===HEIGHT-1);
     const variant=(x*7+y*11+x*y*3)%7;
     const name:GraveyardProp=tile===1?(corner?'crypt-small':(x+y)%9===0?'altar-stone':'stone-wall-column'):
       x===game.portal.x&&y===game.portal.y?'coffin-old':
@@ -953,7 +962,7 @@ function tileModel(x:number,y:number,tile:1|2){
   }
   if(game.map==='pirate'){
     const cannon=game.cannonLanes.find(lane=>lane.x===x&&lane.y===y);
-    const corner=(x===0||x===WIDTH-1)&&(y===0||y===HEIGHT-1);
+    const corner=(x===0||x===game.width-1)&&(y===0||y===HEIGHT-1);
     const variant=(x*7+y*11+x*y*3)%9;
     const name:PirateProp=tile===1?(cannon?'cannon':corner?'tower-base':variant===0?'rocks-a':variant===4?'rocks-b':'castle-wall'):
       x===game.portal.x&&y===game.portal.y?'chest':
@@ -1037,13 +1046,13 @@ function renderDifficultyOptions(){
 }
 function renderMapOptions(){
   const introCopy=document.querySelector<HTMLElement>('#intro-copy')!;
-  const updateCopy=()=>{introCopy.textContent=selectedMap==='foundry'?'Sprenge Energiecontainer. Auf den markierten Förderbändern fahren gelegte Bomben weiter.':selectedMap==='market'?'Räume die Regale frei. Einkaufswagen nehmen Bomben auf und fahren sie durch zwei Kassenbahnen.':selectedMap==='graveyard'?'Sprenge Särge und Kürbisse. Bomben auf einem Spukgrab erscheinen am zweiten Grab – mit laufendem Zünder.':selectedMap==='pirate'?'Sprenge Kisten und Fässer. Achte auf die Warnlichter: Die Kanonen feuern abwechselnd durch freie Gänge.':'Sprenge Holzkisten und Fässer, locke Gegner in die Kreuzexplosion und erreiche das Portal.';};
+  const updateCopy=()=>{introCopy.textContent=selectedMap==='foundry'?'Sprenge Energiecontainer. Auf den markierten Förderbändern fahren gelegte Bomben weiter.':selectedMap==='market'?'Räume die Regale frei. Einkaufswagen nehmen Bomben auf und fahren sie durch zwei Kassenbahnen.':selectedMap==='graveyard'?'Sprenge Särge und Kürbisse. Bomben auf einem Spukgrab erscheinen am zweiten Grab – mit laufendem Zünder.':selectedMap==='pirate'?'Sprenge Kisten und Fässer. Achte auf die Warnlichter: Die Kanonen feuern abwechselnd durch freie Gänge.':selectedMap==='panorama'?'19 × 11 Felder, zwei lange Quergänge und mehr Raum für Flanken. Im Handy-Querformat besonders gut spielbar.':'Sprenge Holzkisten und Fässer, locke Gegner in die Kreuzexplosion und erreiche das Portal.';};
   for(const button of mapOptions.querySelectorAll<HTMLButtonElement>('[data-map]')){
     const map=button.dataset.map as ArenaMap;
     button.setAttribute('aria-pressed',String(map===selectedMap));
     button.addEventListener('click',()=>{
       if(map===selectedMap)return;
-      clearObjects();selectedMap=map;game.setMap(map);applyMapTheme();syncStatic();updateHud();
+      clearObjects();selectedMap=map;game.setMap(map);rebuildBoardSurface();applyMapTheme();syncStatic();resize();updateHud();
       mapHint.textContent=mapDescriptions[map];
       updateCopy();
       for(const option of mapOptions.querySelectorAll<HTMLButtonElement>('[data-map]'))option.setAttribute('aria-pressed',String(option.dataset.map===map));
@@ -1060,7 +1069,7 @@ async function loadKenneyAssets(){
   await loadPlayerArt();
 }
 function syncStatic(){
-  for(let y=0;y<HEIGHT;y++)for(let x=0;x<WIDTH;x++){
+  for(let y=0;y<HEIGHT;y++)for(let x=0;x<game.width;x++){
     const id=key(x,y),tile=game.tile(x,y),existing=tileObjects.get(id);
     if(game.map==='lobby'&&(x<2||x>10||y<1||y>9)){if(existing){removeTileObject(existing);tileObjects.delete(id);}continue;}
     if(tile===0){if(existing){removeTileObject(existing);tileObjects.delete(id);}continue;}
@@ -1238,7 +1247,7 @@ function clearObjects(){
 function resize(){
   const w=stage.clientWidth,h=stage.clientHeight;if(!w||!h)return;
   renderer.setSize(w,h,false);
-  const aspect=w/h,halfH=Math.max(6.15,7.05/aspect);
+  const aspect=w/h,halfH=Math.max(6.15,(game.width+1.8)/(2*aspect),7.05/aspect);
   camera.left=-halfH*aspect;camera.right=halfH*aspect;camera.top=halfH;camera.bottom=-halfH;camera.updateProjectionMatrix();
 }
 new ResizeObserver(resize).observe(stage);resize();
@@ -1339,10 +1348,10 @@ function showResult(){
   stage.classList.remove('game-active');pauseMenu.classList.add('hidden');result.classList.remove('hidden');beep(win?780:180,0.35,'triangle',0.08);
 }
 function prepareMap(map:MapType,seed?:number,onlineMatch=false){
-  clearObjects();game.map=map;game.onlineLobby=map==='lobby'&&!!lobbyConnection;game.onlineMatch=onlineMatch;game.onlineMatchGuest=onlineMatch&&lobbySelfId!==lobbyHostId;game.reset(seed);game.setDifficulty(selectedDifficulty);
+  clearObjects();game.map=map;game.onlineLobby=map==='lobby'&&!!lobbyConnection;game.onlineMatch=onlineMatch;game.onlineMatchGuest=onlineMatch&&lobbySelfId!==lobbyHostId;game.reset(seed);game.setDifficulty(selectedDifficulty);rebuildBoardSurface();
   playerObject.position.copy(world(game.player));
   camera.zoom=map==='lobby'?1.22:1;camera.updateProjectionMatrix();
-  applyMapTheme();syncStatic();updateHud();
+  applyMapTheme();syncStatic();resize();updateHud();
 }
 function leaveLobby(){
   lobbyConnection?.close();lobbyConnection=null;lobbyCode='';lobbySelfId='';
@@ -1541,7 +1550,7 @@ touchBomb.addEventListener('pointerdown',e=>{e.preventDefault();touchBomb.classL
 for(const eventName of ['pointerup','pointercancel','lostpointercapture'])touchBomb.addEventListener(eventName,()=>touchBomb.classList.remove('active'));
 touchBomb.addEventListener('keydown',e=>{if(e.code==='Space'||e.code==='Enter'){e.preventDefault();e.stopPropagation();pressBombButton();}});
 stage.addEventListener('pointerdown',e=>{
-  if(game.status==='running'&&window.matchMedia('(max-width:760px)').matches&&e.pointerType!=='mouse'&&e.clientX>=window.innerWidth/2&&(e.target===canvas||e.target===stage)){
+  if(game.status==='running'&&lowPowerDevice&&e.pointerType!=='mouse'&&e.clientX>=window.innerWidth/2&&(e.target===canvas||e.target===stage)){
     e.preventDefault();pressBombButton();
   }
 });
