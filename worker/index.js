@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 
 const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const upgradePool = ['range', 'capacity', 'speed', 'remote', 'bombPass', 'glove', 'kick', 'maxRange', 'powerBomb', 'pierce', 'slime', 'shield'];
+const upgradePool = ['range', 'range', 'range', 'range', 'range2', 'capacity', 'speed', 'remote', 'bombPass', 'glove', 'kick', 'maxRange', 'powerBomb', 'pierce', 'slime', 'shield'];
 const initialSpawns = [{ x: 6, y: 5 }, { x: 4, y: 3 }, { x: 8, y: 7 }, { x: 8, y: 3 }, { x: 4, y: 7 }, { x: 6, y: 3 }, { x: 6, y: 7 }, { x: 4, y: 5 }];
 const matchSpawns = [{ x: 1, y: 1 }, { x: 11, y: 9 }, { x: 11, y: 1 }, { x: 1, y: 9 }, { x: 1, y: 5 }, { x: 11, y: 5 }, { x: 5, y: 1 }, { x: 7, y: 9 }];
 const matchMaps = new Set(['courtyard', 'foundry', 'market', 'graveyard', 'pirate']);

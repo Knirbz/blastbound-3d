@@ -19,7 +19,7 @@ export type Bomb = Point & { fuse: number; range: number; ownerPass: boolean; id
 export type CannonLane = Point & { direction: 'left' | 'right'; endX: number };
 export type CannonShot = Point & { id: number; direction: 'left' | 'right' };
 export type Enemy = Point & { id: number; targetX: number; targetY: number; moveTimer: number; bombCooldown: number; escapePath: Point[]; alive: boolean; facing: Direction };
-export type UpgradeType = 'range' | 'capacity' | 'speed' | 'remote' | 'bombPass' | 'blockPass' | 'glove' | 'kick' | 'heart' | 'maxRange' | 'powerBomb' | 'pierce' | 'slime' | 'skull' | 'shield';
+export type UpgradeType = 'range' | 'range2' | 'capacity' | 'speed' | 'remote' | 'bombPass' | 'blockPass' | 'glove' | 'kick' | 'heart' | 'maxRange' | 'powerBomb' | 'pierce' | 'slime' | 'skull' | 'shield';
 export const CLASSIC_UPGRADES: UpgradeType[] = ['range','capacity','speed','remote','bombPass','blockPass','glove','kick','heart','maxRange','powerBomb','pierce','slime','skull'];
 export type BlastKind = 'normal' | 'powered' | 'chain';
 export type BlastCell = Point & { distance: number; direction: Direction | null };
@@ -130,7 +130,7 @@ export class Game {
   }
   private spawnLobbyUpgrade() {
     if(this.map!=='lobby'||this.upgrades.length>=5)return;
-    const pool:UpgradeType[]=['range','capacity','speed','remote','bombPass','glove','kick','maxRange','powerBomb','pierce','slime','shield'];
+    const pool:UpgradeType[]=['range','range','range','range','range2','capacity','speed','remote','bombPass','glove','kick','maxRange','powerBomb','pierce','slime','shield'];
     const free:Point[]=[];
     for(let y=2;y<=8;y++)for(let x=3;x<=9;x++)
       if(Math.hypot(x-this.player.x,y-this.player.y)>1.2&&!this.upgrades.some(u=>u.x===x&&u.y===y)&&!this.bombs.some(b=>b.x===x&&b.y===y)&&!this.fire.has(Game.key(x,y)))free.push({x,y});
@@ -466,7 +466,7 @@ export class Game {
           this.tiles[y][x]=0; this.events.push({type:'crate',x,y});
           if (this.rand()<0.34 && !(x===this.portal.x && y===this.portal.y)) {
             const roll=this.rand();
-            const pool:UpgradeType[]=['range','range','range','capacity','capacity','speed','speed','remote','bombPass','blockPass','glove','kick','heart','maxRange','powerBomb','pierce','slime','skull','shield'];
+            const pool:UpgradeType[]=['range','range','range','range2','capacity','capacity','speed','speed','remote','bombPass','blockPass','glove','kick','heart','maxRange','powerBomb','pierce','slime','skull','shield'];
             this.upgrades.push({x,y,type:pool[Math.floor(roll*pool.length)]});
           }
           if(!bomb.pierce)break;
@@ -481,6 +481,7 @@ export class Game {
     if(upgrade.type!=='skull'){this.player.curse=0;this.player.curseType=null;}
     switch(upgrade.type){
       case 'range':this.player.range=Math.min(9,this.player.range+1);break;
+      case 'range2':this.player.range=Math.min(9,this.player.range+2);break;
       case 'capacity':this.player.capacity=Math.min(9,this.player.capacity+1);break;
       case 'speed':this.player.speed=Math.min(5,this.player.speed+1);break;
       case 'remote':this.player.remote=true;break;

@@ -131,7 +131,7 @@ const particleTexture=(name:string)=>{
 const fxTextures={fire:particleTexture('fire_01'),flame:particleTexture('flame_02'),smoke:particleTexture('smoke_05'),spark:particleTexture('spark_05'),scorch:particleTexture('scorch_01'),scratch:particleTexture('scratch_01'),dirt:particleTexture('dirt_02'),flare:particleTexture('flare_01')};
 const fxMaterial=(texture:THREE.Texture,color:string,opacity=1,additive=true)=>new THREE.SpriteMaterial({map:texture,color,transparent:true,opacity,blending:additive?THREE.AdditiveBlending:THREE.NormalBlending,depthWrite:false});
 const portalMat = new THREE.MeshStandardMaterial({color:'#76dfff',emissive:'#18baf0',emissiveIntensity:2.7,metalness:0.35,roughness:0.2});
-const upgradeColors:Record<UpgradeType,string>={range:'#ffae54',capacity:'#80ecdb',speed:'#f4da73',remote:'#a5a0ff',bombPass:'#c7a6f1',blockPass:'#a3d5ef',glove:'#f8bd80',kick:'#f49676',heart:'#ff7d9a',maxRange:'#ffdf69',powerBomb:'#f6a852',pierce:'#ff7070',slime:'#8be275',skull:'#bb9bd5',shield:'#7eb7ff'};
+const upgradeColors:Record<UpgradeType,string>={range:'#ffae54',range2:'#ffdb64',capacity:'#80ecdb',speed:'#f4da73',remote:'#a5a0ff',bombPass:'#c7a6f1',blockPass:'#a3d5ef',glove:'#f8bd80',kick:'#f49676',heart:'#ff7d9a',maxRange:'#ffdf69',powerBomb:'#f6a852',pierce:'#ff7070',slime:'#8be275',skull:'#bb9bd5',shield:'#7eb7ff'};
 const upgradeMats=Object.fromEntries(Object.entries(upgradeColors).map(([type,color])=>[type,new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity:0.65,metalness:0.22,roughness:0.32})])) as Record<UpgradeType,THREE.MeshStandardMaterial>;
 const pickupFrame=mat('#f4f0df',0.33,0.06);
 const pickupShadowMat=new THREE.MeshBasicMaterial({color:'#11182a',transparent:true,opacity:0.24,depthWrite:false});
@@ -177,7 +177,12 @@ function upgradeIconTexture(type:UpgradeType){
   const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;texture.anisotropy=4;
   return texture;
 }
-const upgradeIconMats=Object.fromEntries((Object.keys(upgradeColors) as UpgradeType[]).map(type=>[type,new THREE.MeshBasicMaterial({map:upgradeIconTexture(type)})])) as Record<UpgradeType,THREE.MeshBasicMaterial>;
+const upgradeIconMats=Object.fromEntries((Object.keys(upgradeColors) as UpgradeType[]).map(type=>[type,new THREE.MeshBasicMaterial({map:type==='range2'?null:upgradeIconTexture(type)})])) as Record<UpgradeType,THREE.MeshBasicMaterial>;
+async function loadUpgradeAssets(){
+  const texture=await new THREE.TextureLoader().loadAsync('/assets/blastbound/upgrades/range2.png');
+  texture.colorSpace=THREE.SRGBColorSpace;texture.anisotropy=4;
+  upgradeIconMats.range2.map=texture;upgradeIconMats.range2.needsUpdate=true;
+}
 const mesh=(geometry:THREE.BufferGeometry, material:THREE.Material, shadow=true) => {const o=new THREE.Mesh(geometry,material); o.castShadow=shadow; o.receiveShadow=true; return o;};
 const rounded=(w:number,h:number,d:number,r:number,m:THREE.Material)=>mesh(new RoundedBoxGeometry(w,h,d,3,r),m);
 function disposeVisualGeometry(object:THREE.Object3D){object.traverse(child=>{if(child instanceof THREE.Mesh)child.geometry.dispose();});}
@@ -1625,7 +1630,7 @@ function frame(now:number){
     if(event.type==='upgrade'){
       if(lobbyConnection)lobbyConnection.send({type:'pickup',x:event.x,y:event.y});
       const type=event.upgrade??'range';
-      const messages:Record<UpgradeType,string>={range:'FLAMMENREICHWEITE +1',capacity:'EINE BOMBE MEHR',speed:'TEMPO +1',remote:'FERNZÜNDER AKTIV',bombPass:'DURCH BOMBEN LAUFEN',blockPass:'DURCH KISTEN LAUFEN',glove:'BOMBEN TRAGEN & WERFEN',kick:'BOMBEN KICKEN',heart:'EIN LEBEN ZURÜCK',maxRange:'MAXIMALE REICHWEITE',powerBomb:'NÄCHSTE BOMBE: MAXIMAL',pierce:'SUPERBOMBEN: DURCH KISTEN',slime:'SCHLEIMBOMBEN',skull:'FLUCH AKTIV',shield:'SCHUTZSCHILD AKTIV'};
+      const messages:Record<UpgradeType,string>={range:'FLAMMENREICHWEITE +1',range2:'FLAMMENREICHWEITE +2',capacity:'EINE BOMBE MEHR',speed:'TEMPO +1',remote:'FERNZÜNDER AKTIV',bombPass:'DURCH BOMBEN LAUFEN',blockPass:'DURCH KISTEN LAUFEN',glove:'BOMBEN TRAGEN & WERFEN',kick:'BOMBEN KICKEN',heart:'EIN LEBEN ZURÜCK',maxRange:'MAXIMALE REICHWEITE',powerBomb:'NÄCHSTE BOMBE: MAXIMAL',pierce:'SUPERBOMBEN: DURCH KISTEN',slime:'SCHLEIMBOMBEN',skull:'FLUCH AKTIV',shield:'SCHUTZSCHILD AKTIV'};
       showToast(messages[type]);burst(event.x,event.y,upgradeColors[type],12);beep(880,0.24,'triangle',0.05);
     }
     if(event.type==='enemy'){burst(event.x,event.y,'#eab0ff',12);showToast('GEGNER AUSGESCHALTET!');beep(660,0.14,'triangle',0.04);}
@@ -1648,7 +1653,7 @@ renderCharacterOptions();renderDifficultyOptions();renderMapOptions();
 const inviteCode=new URL(location.href).searchParams.get('lobby')?.toUpperCase()??'';
 if(/^[A-HJ-NP-Z2-9]{6}$/.test(inviteCode))openLobbySetup('join',inviteCode);
 const assetLoading=document.querySelector<HTMLElement>('#asset-loading')!;
-void Promise.all([loadKenneyAssets(),loadBombAssets(),loadDungeonAssets(),loadMarketAssets(),loadGraveyardAssets(),loadPirateAssets()]).then(()=>{
+void Promise.all([loadKenneyAssets(),loadBombAssets(),loadDungeonAssets(),loadMarketAssets(),loadGraveyardAssets(),loadPirateAssets(),loadUpgradeAssets()]).then(()=>{
   playerObject.position.copy(world(game.player));applyMapTheme();syncStatic();updateHud();
   assetLoading.remove();last=performance.now();requestAnimationFrame(frame);
 }).catch(error=>{

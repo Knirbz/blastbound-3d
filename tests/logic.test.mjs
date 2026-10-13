@@ -182,6 +182,18 @@ test('range and capacity pickups alter bombs, while a shield absorbs one hit', (
   assert.equal(game.player.lives,2);
 });
 
+test('rare double fire pickup adds two tiles and respects the range cap',()=>{
+  const game=new Game(245);game.start();openArena(game);
+  collect(game,'range2');
+  assert.equal(game.player.range,3);
+  game.player.range=8;
+  collect(game,'range2');
+  assert.equal(game.player.range,9);
+  game.player.x=3;game.player.y=3;
+  assert.equal(game.placeBomb(),true);
+  assert.equal(game.bombs[0].range,9);
+});
+
 test('powered and chain explosions carry distinct visual kinds', () => {
   const game = new Game(12); game.start();
   for (const row of game.tiles) row.fill(0);
