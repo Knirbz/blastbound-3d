@@ -23,8 +23,8 @@ const difficultyDescriptions:Record<Difficulty,string>={
   hard:'Schnelle Bots mit stärkeren Bomben.',
 };
 const difficultyNames:Record<Difficulty,string>={training:'Training',easy:'Leicht',medium:'Mittel',hard:'Schwer'};
-const mapNames:Record<MapType,string>={courtyard:'Burghof',foundry:'Werkhalle'};
-const mapDescriptions:Record<MapType,string>={courtyard:'Klassische Kisten und feste Mauern.',foundry:'Förderbänder bewegen gelegte Bomben.'};
+const mapNames:Record<MapType,string>={courtyard:'Burghof',foundry:'Werkhalle',market:'Kassenchaos'};
+const mapDescriptions:Record<MapType,string>={courtyard:'Klassische Kisten und feste Mauern.',foundry:'Förderbänder bewegen gelegte Bomben.',market:'Regale freisprengen. Einkaufswagen fahren Bomben durch die Kassenbahnen.'};
 const characters = [
   {id:'character-female-a',name:'Lina'},
   {id:'character-female-b',name:'Mira'},
@@ -75,11 +75,13 @@ const rim = new THREE.DirectionalLight('#7789ff',0.8); rim.position.set(8,6,-9);
 const mat = (color:string, roughness=0.65, metalness=0) => new THREE.MeshStandardMaterial({color,roughness,metalness});
 const floorMats=['#4b627f','#506783','#48607d','#4d6580'].map(color=>mat(color,0.88));
 const foundryFloorMats=['#4c5361','#545c68','#444e5f','#59616c'].map(color=>mat(color,0.73,0.14));
+const marketFloorMats=['#d8ddd7','#e0e4dc','#d4dad4','#e6e7df'].map(color=>mat(color,0.82));
 const floorEdge=mat('#263a58');
 const foundryEdge=mat('#343a4b',0.55,0.3);
+const marketEdge=mat('#677e78',0.67);
 const stone=mat('#347c98',0.68), stoneTop=mat('#62c9ca',0.5), stoneTrim=mat('#20526f');
 const wood=mat('#bf794f',0.72), woodTop=mat('#e29a64',0.7), woodTrim=mat('#81563f',0.78), woodNail=mat('#e7c88a',0.3,0.55);
-const foundrySteel=mat('#303c4e',0.48,0.52),foundryTrim=mat('#a8aeb1',0.34,0.55),foundryGold=mat('#e9a951',0.5,0.3);
+const foundrySteel=mat('#303c4e',0.48,0.52),foundryTrim=mat('#a8aeb1',0.34,0.55),foundryGold=new THREE.MeshStandardMaterial({color:'#ff9d35',emissive:'#a8450a',emissiveIntensity:0.4,roughness:0.43,metalness:0.16});
 const foundryGlow=new THREE.MeshStandardMaterial({color:'#6fe5e8',emissive:'#25bbc8',emissiveIntensity:1.8,roughness:0.28,metalness:0.2});
 const beltMat=mat('#1f2938',0.7,0.35),beltArrowMat=new THREE.MeshBasicMaterial({color:'#f6bd66'});
 const bombMat=mat('#34415d',0.26,0.25), bombCap=mat('#8b9bb4',0.34,0.55);
@@ -159,6 +161,7 @@ const actors = new THREE.Group(); scene.add(actors);
 const effects = new THREE.Group(); scene.add(effects);
 const floorBase=rounded(WIDTH+0.28,0.34,HEIGHT+0.28,0.14,floorEdge); floorBase.position.y=-0.28; floorBase.receiveShadow=true; board.add(floorBase);
 const floorCells:THREE.Mesh[]=[];
+const marketFloor=new THREE.Group();board.add(marketFloor);
 for(let y=0;y<HEIGHT;y++)for(let x=0;x<WIDTH;x++){
   const variation=(x*17+y*31+x*y*7)%floorMats.length;
   const cell=mesh(new THREE.BoxGeometry(0.995,0.07,0.995),floorMats[variation],false);
@@ -179,11 +182,16 @@ rimBase.position.y=-0.55; board.add(rimBase);
 const conveyorVisuals=new THREE.Group();board.add(conveyorVisuals);
 function applyMapTheme(){
   const foundry=game.map==='foundry';
-  for(let i=0;i<floorCells.length;i++)floorCells[i].material=(foundry?foundryFloorMats:floorMats)[i%4];
-  floorBase.material=foundry?foundryEdge:floorEdge;
-  (rimBase.material as THREE.MeshStandardMaterial).color.set(foundry?'#242936':'#202d48');
-  scene.background=new THREE.Color(foundry?'#191b2a':'#171e34');
-  if(scene.fog instanceof THREE.Fog)scene.fog.color.set(foundry?'#191b2a':'#171e34');
+  const market=game.map==='market';
+  marketFloor.visible=market&&marketFloor.children.length>0;
+  for(let i=0;i<floorCells.length;i++){
+    floorCells[i].material=(foundry?foundryFloorMats:market?marketFloorMats:floorMats)[i%4];
+    floorCells[i].visible=!marketFloor.visible;
+  }
+  floorBase.material=foundry?foundryEdge:market?marketEdge:floorEdge;
+  (rimBase.material as THREE.MeshStandardMaterial).color.set(foundry?'#242936':market?'#536e68':'#202d48');
+  scene.background=new THREE.Color(foundry?'#191b2a':market?'#1c2831':'#171e34');
+  if(scene.fog instanceof THREE.Fog)scene.fog.color.set(foundry?'#191b2a':market?'#1c2831':'#171e34');
   for(const child of [...conveyorVisuals.children]){conveyorVisuals.remove(child);disposeVisualGeometry(child);}
   if(!foundry)return;
   const arrowShape=new THREE.Shape();arrowShape.moveTo(-0.16,-0.12);arrowShape.lineTo(0.02,-0.12);arrowShape.lineTo(0.02,-0.22);arrowShape.lineTo(0.23,0);arrowShape.lineTo(0.02,0.22);arrowShape.lineTo(0.02,0.12);arrowShape.lineTo(-0.16,0.12);arrowShape.closePath();
@@ -227,21 +235,21 @@ function foundryWall(){
   for(const x of [-0.37,0.37])for(const z of [-0.37,0.37]){
     const bolt=mesh(new THREE.CylinderGeometry(0.046,0.046,0.025,8),foundryGold);bolt.position.set(x,0.97,z);g.add(bolt);
   }
-  const strip=rounded(0.5,0.07,0.02,0.015,foundryGlow);strip.position.set(0,0.5,0.464);g.add(strip);
+  const strip=rounded(0.5,0.07,0.02,0.015,foundryTrim);strip.position.set(0,0.5,0.464);g.add(strip);
   return g;
 }
 function foundryCrate(x:number,y:number,portal=false){
   const g=new THREE.Group();
   const drum=(x*5+y*7)%3===0&&!portal;
   if(drum){
-    const body=mesh(new THREE.CylinderGeometry(0.34,0.37,0.68,16),foundrySteel);body.position.y=0.38;g.add(body);
-    for(const level of [0.12,0.68]){const ring=mesh(new THREE.CylinderGeometry(0.39,0.39,0.06,16),foundryGold);ring.position.y=level;g.add(ring);}
-    const lid=mesh(new THREE.CylinderGeometry(0.29,0.29,0.03,16),foundryGlow);lid.position.y=0.725;g.add(lid);
+    const body=mesh(new THREE.CylinderGeometry(0.34,0.37,0.68,16),foundryGold);body.position.y=0.38;g.add(body);
+    for(const level of [0.12,0.68]){const ring=mesh(new THREE.CylinderGeometry(0.39,0.39,0.06,16),foundryTrim);ring.position.y=level;g.add(ring);}
+    const lid=mesh(new THREE.CylinderGeometry(0.29,0.29,0.03,16),foundryGold);lid.position.y=0.725;g.add(lid);
   }else{
     const body=rounded(0.84,0.72,0.84,0.06,foundryGold);body.position.y=0.38;g.add(body);
     const panel=rounded(0.62,0.54,0.045,0.025,foundrySteel);panel.position.set(0,0.4,0.425);g.add(panel);
     const window=rounded(0.36,0.22,0.05,0.025,foundryGlow);window.position.set(0,0.43,0.454);g.add(window);
-    const lid=rounded(0.86,0.08,0.86,0.025,foundryTrim);lid.position.y=0.78;g.add(lid);
+    const lid=rounded(0.86,0.08,0.86,0.025,foundryGold);lid.position.y=0.78;g.add(lid);
     if(portal){const beacon=mesh(new THREE.OctahedronGeometry(0.12,0),foundryGlow,false);beacon.position.y=0.92;g.add(beacon);}
   }
   return g;
@@ -373,10 +381,10 @@ function upgradeObject(type:UpgradeType){
   const accent=upgradeMats[type];
   const shadow=mesh(new THREE.CircleGeometry(0.41,24),pickupShadowMat,false);shadow.rotation.x=-Math.PI/2;shadow.position.y=0.01;g.add(shadow);
   const icon=new THREE.Group();icon.position.y=0.17;g.add(icon);
-  const base=rounded(0.8,0.14,0.8,0.09,accent);base.position.y=0;icon.add(base);
-  const rim=rounded(0.74,0.035,0.74,0.06,pickupFrame);rim.position.y=0.084;icon.add(rim);
-  const face=mesh(new THREE.PlaneGeometry(0.68,0.68),upgradeIconMats[type],false);face.rotation.x=-Math.PI/2;face.position.y=0.106;icon.add(face);
-  g.userData.icon=icon;
+  const base=rounded(0.9,0.16,0.9,0.09,accent);base.position.y=0;icon.add(base);
+  const rim=rounded(0.84,0.035,0.84,0.06,pickupFrame);rim.position.y=0.096;icon.add(rim);
+  const face=mesh(new THREE.PlaneGeometry(0.93,0.93),upgradeIconMats[type],false);face.position.y=0.66;icon.add(face);
+  g.userData.icon=icon;g.userData.face=face;
   return g;
 }
 
@@ -404,6 +412,7 @@ function setAnimatedState(art:AnimatedArt|null,moving:boolean){
 }
 const tileObjects=new Map<string,THREE.Object3D>();
 const bombObjects=new Map<number,THREE.Object3D>();
+const cartObjects=new Map<number,THREE.Object3D>();
 const enemyObjects=new Map<number,THREE.Group>();
 const enemyArt=new Map<number,AnimatedArt>();
 const fireObjects=new Map<string,THREE.Object3D>();
@@ -521,6 +530,8 @@ function applyEnemyArt(group:THREE.Group,id:number){
 const assetLoader=new GLTFLoader();
 type TileProp='wall'|'wood-structure'|'barrel'|'chest';
 const tileModels=new Map<TileProp,THREE.Object3D>();
+type MarketProp='column'|'floor'|'shelf-boxes'|'shelf-bags'|'shelf-end'|'freezer'|'freezers-standing'|'cash-register'|'display-fruit'|'display-bread'|'shopping-cart'|'shopping-basket';
+const marketModels=new Map<MarketProp,THREE.Object3D>();
 function prepareTileModel(gltf:GLTF,width:number,height:number,fullFootprint=false){
   const model=gltf.scene;
   const bounds=new THREE.Box3().setFromObject(model);
@@ -556,14 +567,49 @@ async function loadDungeonAssets(){
       tileModels.set(name,prepareTileModel(gltf,width,height,fullFootprint));
     }catch(error){console.warn(`Kenney ${name} asset unavailable`,error);}
   }));
+  if(game.map==='courtyard')rebuildStaticProps();
+}
+async function loadMarketAssets(){
+  const assets:[MarketProp,number,number][]=[
+    ['column',0.9,1.18],['floor',1,0.05],['shelf-boxes',0.88,0.88],['shelf-bags',0.88,0.88],
+    ['shelf-end',0.88,0.88],['freezer',0.88,0.6],['freezers-standing',0.88,0.94],
+    ['cash-register',0.88,0.72],['display-fruit',0.84,0.72],['display-bread',0.84,0.72],
+    ['shopping-cart',0.78,0.72],['shopping-basket',0.78,0.7],
+  ];
+  await Promise.all(assets.map(async ([name,width,height])=>{
+    try{
+      const gltf=await assetLoader.loadAsync(`/assets/kenney/market/${name}.glb`);
+      marketModels.set(name,prepareTileModel(gltf,width,height));
+    }catch(error){console.warn(`Kenney market ${name} asset unavailable`,error);}
+  }));
+  const floor=marketModels.get('floor');
+  if(floor){
+    marketFloor.clear();
+    for(let y=0;y<HEIGHT;y++)for(let x=0;x<WIDTH;x++){
+      const cell=floor.clone(true);cell.position.set(x-6,-0.03,y-5);marketFloor.add(cell);
+    }
+  }
+  applyMapTheme();
+  if(game.map==='market')rebuildStaticProps();
+}
+function rebuildStaticProps(){
   for(const obj of tileObjects.values())removeTileObject(obj);
-  tileObjects.clear();
-  syncStatic();
+  tileObjects.clear();syncStatic();
 }
 function tileModel(x:number,y:number,tile:1|2){
   if(game.map==='foundry'){
     const model=tile===1?foundryWall():foundryCrate(x,y,x===game.portal.x&&y===game.portal.y);
     model.userData.procedural=true;return model;
+  }
+  if(game.map==='market'){
+    const variant=(x*7+y*11+x*y*3)%8;
+    const name:MarketProp=tile===1?(x===2&&y===3||x===10&&y===7?'cash-register':'column'):x===game.portal.x&&y===game.portal.y?'shopping-basket':
+      (['shelf-boxes','shelf-bags','shelf-end','freezer','display-fruit','shelf-boxes','display-bread','freezers-standing'] as const)[variant];
+    const template=marketModels.get(name);
+    if(!template)return tile===1?stoneBlock():crate();
+    const model=template.clone(true);
+    if(tile===2)model.rotation.y=((x+y)%2)*Math.PI/2;
+    return model;
   }
   const name:TileProp=tile===1?'wall':x===game.portal.x&&y===game.portal.y?'chest':(x*7+y*11)%5===0?'barrel':'wood-structure';
   const template=tileModels.get(name);
@@ -633,7 +679,7 @@ function renderDifficultyOptions(){
 }
 function renderMapOptions(){
   const introCopy=document.querySelector<HTMLElement>('#intro-copy')!;
-  const updateCopy=()=>{introCopy.textContent=selectedMap==='foundry'?'Sprenge Energiecontainer. Auf den markierten Förderbändern fahren gelegte Bomben weiter.':'Sprenge Holzkisten und Fässer, locke Gegner in die Kreuzexplosion und erreiche das Portal.';};
+  const updateCopy=()=>{introCopy.textContent=selectedMap==='foundry'?'Sprenge Energiecontainer. Auf den markierten Förderbändern fahren gelegte Bomben weiter.':selectedMap==='market'?'Räume die Regale frei. Einkaufswagen nehmen Bomben auf und fahren sie durch zwei Kassenbahnen.':'Sprenge Holzkisten und Fässer, locke Gegner in die Kreuzexplosion und erreiche das Portal.';};
   for(const button of mapOptions.querySelectorAll<HTMLButtonElement>('[data-map]')){
     const map=button.dataset.map as MapType;
     button.setAttribute('aria-pressed',String(map===selectedMap));
@@ -704,6 +750,15 @@ function syncDynamic(){
     obj.scale.set(1+landing*0.08+shake*0.026*Math.sin(time*55+bomb.id),1-landing*0.1,1+landing*0.08-shake*0.026*Math.sin(time*55+bomb.id));
     obj.rotation.z=shake*0.075*Math.sin(time*49+bomb.id);
     obj.rotation.x=shake*0.06*Math.sin(time*57+bomb.id*1.7);
+    const onCart=game.map==='market'&&!bomb.carried&&game.conveyors.has(key(bomb.x,bomb.y));
+    const cartTemplate=marketModels.get('shopping-cart');
+    let cart=cartObjects.get(bomb.id);
+    if(onCart&&cartTemplate){
+      if(!cart){cart=cartTemplate.clone(true);props.add(cart);cartObjects.set(bomb.id,cart);}
+      cart.position.set(obj.position.x,0.025,obj.position.z);
+      cart.rotation.y=game.conveyors.get(key(bomb.x,bomb.y))==='left'?-Math.PI/2:Math.PI/2;
+      obj.position.y+=0.22;
+    }else if(cart){props.remove(cart);cartObjects.delete(bomb.id);}
     const face=obj.userData.face as THREE.Mesh;
     face.scale.setScalar(0.94+warning*0.18*Math.max(0,Math.sin(time*(10+warning*20))));
     const halo=obj.userData.halo as THREE.Mesh;
@@ -722,6 +777,7 @@ function syncDynamic(){
     if(warning>0&&tick>(obj.userData.lastTick??-1)){obj.userData.lastTick=tick;beep(450+tick*90,0.045,'triangle',0.012);}
   }
   for(const [id,obj] of bombObjects)if(!game.bombs.some(b=>b.id===id)){props.remove(obj);disposeBombObject(obj);bombObjects.delete(id);}
+  for(const [id,obj] of cartObjects)if(!game.bombs.some(b=>b.id===id)){props.remove(obj);cartObjects.delete(id);}
   for(const [id,ttl] of game.fire){
     let obj=fireObjects.get(id);
     const kind=game.fireKinds.get(id)??'normal';
@@ -766,8 +822,9 @@ function syncDynamic(){
     if(!upgradeObjects.has(id)){const obj=upgradeObject(upgrade.type);obj.position.copy(world(upgrade));props.add(obj);upgradeObjects.set(id,obj);}
     const obj=upgradeObjects.get(id)!;
     const icon=obj.userData.icon as THREE.Group;
-    icon.position.y=0.17+0.06*Math.sin(performance.now()*0.004+upgrade.x);
-    icon.rotation.y=0.08*Math.sin(performance.now()*0.002+upgrade.x*0.7);
+    icon.position.y=0.14+0.06*Math.sin(performance.now()*0.004+upgrade.x);
+    icon.rotation.y=0;
+    (obj.userData.face as THREE.Mesh).quaternion.copy(camera.quaternion);
   }
   for(const [id,obj] of upgradeObjects)if(!game.upgrades.some(u=>key(u.x,u.y)===id)){props.remove(obj);disposeVisualGeometry(obj);upgradeObjects.delete(id);}
   if(portalObjectRef){portalObjectRef.rotation.y+=0.012;portalObjectRef.position.y=0.04*Math.sin(performance.now()*0.003);}
@@ -777,6 +834,7 @@ function syncDynamic(){
 function clearObjects(){
   for(const obj of tileObjects.values())removeTileObject(obj);tileObjects.clear();
   for(const obj of bombObjects.values()){props.remove(obj);disposeBombObject(obj);}bombObjects.clear();
+  for(const obj of cartObjects.values())props.remove(obj);cartObjects.clear();
   for(const obj of enemyObjects.values())actors.remove(obj);enemyObjects.clear();
   for(const art of enemyArt.values())art.mixer.stopAllAction();enemyArt.clear();
   for(const obj of fireObjects.values()){effects.remove(obj);disposeFireObject(obj);}fireObjects.clear();firePatterns.clear();
@@ -1007,4 +1065,4 @@ function frame(now:number){
   if(cameraJolt>0){camera.position.x+=Math.sin(now*0.071)*cameraJolt;camera.position.z+=Math.sin(now*0.096)*cameraJolt*0.6;}
   if(game.status==='running'){playerArt?.mixer.update(dt);for(const art of enemyArt.values())art.mixer.update(dt);}updateHud();renderer.render(scene,camera);
 }
-playerObject.position.copy(world(game.player));applyMapTheme();syncStatic();renderCharacterOptions();renderDifficultyOptions();renderMapOptions();loadKenneyAssets();void loadDungeonAssets();updateHud();requestAnimationFrame(frame);
+playerObject.position.copy(world(game.player));applyMapTheme();syncStatic();renderCharacterOptions();renderDifficultyOptions();renderMapOptions();loadKenneyAssets();void loadDungeonAssets();void loadMarketAssets();updateHud();requestAnimationFrame(frame);

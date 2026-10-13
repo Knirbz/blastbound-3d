@@ -324,3 +324,22 @@ test('foundry conveyors transport a bomb while its fuse continues to tick',()=>{
   for(let i=0;i<6;i++)game.update(0.1);
   assert.equal(game.bombs[0].x,5);
 });
+
+test('market keeps Bomberman corridors and carries bombs through checkout lanes',()=>{
+  const game=new Game(42,'training','market');
+  assert.equal(game.tiles.length,11);
+  assert.equal(game.tiles[0].length,13);
+  assert.deepEqual(game.portal,{x:9,y:5});
+  assert.equal(game.tile(2,2),1);
+  assert.equal(game.tile(3,3),0);
+  assert.equal(game.tile(9,7),0);
+  assert.equal(game.tile(2,3),1);
+  assert.equal(game.tile(10,7),1);
+  assert.equal(game.conveyors.size,14);
+  assert.equal(game.tile(1,1),0);
+  game.start();game.player.x=4;game.player.y=3;
+  assert.equal(game.placeBomb(),true);
+  for(let i=0;i<6;i++)game.update(0.1);
+  assert.equal(game.bombs[0].x,5);
+  assert.ok(game.bombs[0].fuse<BOMB_FUSE-0.5);
+});

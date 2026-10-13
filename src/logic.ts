@@ -5,7 +5,7 @@ export const ENEMY_SPEED = 1.45;
 export const BOMB_FUSE = 2.8;
 export const FIRE_DURATION = 0.56;
 export type Difficulty = 'training' | 'easy' | 'medium' | 'hard';
-export type MapType = 'courtyard' | 'foundry';
+export type MapType = 'courtyard' | 'foundry' | 'market';
 const difficultySettings: Record<Difficulty, { speed: number; focus: number; cooldown: number; range: number }> = {
   training: { speed: 0, focus: 0, cooldown: Infinity, range: 0 },
   easy: { speed: 0.95, focus: 0.35, cooldown: 6, range: 1 },
@@ -67,7 +67,7 @@ export class Game {
   tile(x: number, y: number): Tile { return this.inBounds(x, y) ? this.tiles[y][x] : 1; }
   reset(seed = Date.now()) {
     this.randomState = seed >>> 0;
-    this.portal=this.map==='foundry'?{x:9,y:5}:{x:9,y:7};
+    this.portal=this.map==='foundry'?{x:9,y:5}:this.map==='market'?{x:9,y:5}:{x:9,y:7};
     this.tiles = Array.from({ length: HEIGHT }, (_, y) => Array.from({ length: WIDTH }, (_, x): Tile => {
       if (x === 0 || y === 0 || x === WIDTH - 1 || y === HEIGHT - 1) return 1;
       if(this.map==='foundry'){
@@ -75,7 +75,7 @@ export class Game {
         return this.rand()<0.59?2:0;
       }
       if(x%2===0&&y%2===0)return 1;
-      return this.rand()<0.64?2:0;
+      return this.rand()<(this.map==='market'?0.61:0.64)?2:0;
     }));
     const safe = [[1,1],[2,1],[1,2],[11,1],[10,1],[11,2],[1,9],[2,9],[1,8],[11,9],[10,9],[11,8]];
     for (const [x,y] of safe) this.tiles[y][x] = 0;
@@ -83,6 +83,14 @@ export class Game {
     if(this.map==='foundry')for(const [y,direction] of [[3,'right'],[7,'left']] as const)for(let x=3;x<=9;x++){
       this.conveyors.set(Game.key(x,y),direction);
       this.tiles[y][x]=0;
+    }
+    if(this.map==='market')for(const [y,direction] of [[3,'right'],[7,'left']] as const)for(let x=3;x<=9;x++){
+      this.conveyors.set(Game.key(x,y),direction);
+      this.tiles[y][x]=0;
+    }
+    if(this.map==='market'){
+      this.tiles[3][2]=1;
+      this.tiles[7][10]=1;
     }
     this.tiles[this.portal.y][this.portal.x] = 2;
     this.fire.clear(); this.fireKinds.clear(); this.bombs = []; this.upgrades = []; this.events = []; this.carriedBombId = null;this.autoBombTimer=0;
