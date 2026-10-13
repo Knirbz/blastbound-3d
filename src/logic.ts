@@ -5,7 +5,7 @@ export const ENEMY_SPEED = 1.45;
 export const BOMB_FUSE = 2.8;
 export const FIRE_DURATION = 0.56;
 export type Difficulty = 'training' | 'easy' | 'medium' | 'hard';
-export type MapType = 'courtyard' | 'foundry' | 'market' | 'graveyard';
+export type MapType = 'courtyard' | 'foundry' | 'market' | 'graveyard' | 'pirate';
 const difficultySettings: Record<Difficulty, { speed: number; focus: number; cooldown: number; range: number }> = {
   training: { speed: 0, focus: 0, cooldown: Infinity, range: 0 },
   easy: { speed: 0.95, focus: 0.35, cooldown: 6, range: 1 },
@@ -16,6 +16,8 @@ export type Tile = 0 | 1 | 2; // floor, stone, crate
 export type Direction = 'up' | 'down' | 'left' | 'right';
 export type Point = { x: number; y: number };
 export type Bomb = Point & { fuse: number; range: number; ownerPass: boolean; id: number; owner?: number; remote?: boolean; pierce?: boolean; slime?: boolean; moving?: Direction; moveTimer?: number; beltTimer?: number; carried?: boolean; riftLocked?: boolean };
+export type CannonLane = Point & { direction: 'left' | 'right'; endX: number };
+export type CannonShot = Point & { id: number; direction: 'left' | 'right' };
 export type Enemy = Point & { id: number; targetX: number; targetY: number; moveTimer: number; bombCooldown: number; escapePath: Point[]; alive: boolean; facing: Direction };
 export type UpgradeType = 'range' | 'capacity' | 'speed' | 'remote' | 'bombPass' | 'blockPass' | 'glove' | 'kick' | 'heart' | 'maxRange' | 'powerBomb' | 'pierce' | 'slime' | 'skull' | 'shield';
 export const CLASSIC_UPGRADES: UpgradeType[] = ['range','capacity','speed','remote','bombPass','blockPass','glove','kick','heart','maxRange','powerBomb','pierce','slime','skull'];
@@ -23,7 +25,7 @@ export type BlastKind = 'normal' | 'powered' | 'chain';
 export type BlastCell = Point & { distance: number; direction: Direction | null };
 export type Upgrade = Point & { type: UpgradeType };
 export type CurseType = 'slow' | 'fast' | 'autoBomb' | 'noBomb' | 'weak';
-export type GameEvent = { type: 'explode' | 'crate' | 'hit' | 'shield' | 'upgrade' | 'enemy' | 'bomb' | 'warp'; x: number; y: number; kind?: BlastKind; upgrade?: UpgradeType; cells?: BlastCell[]; source?: Point };
+export type GameEvent = { type: 'explode' | 'crate' | 'hit' | 'shield' | 'upgrade' | 'enemy' | 'bomb' | 'warp' | 'cannonFire' | 'cannonImpact'; x: number; y: number; kind?: BlastKind; upgrade?: UpgradeType; cells?: BlastCell[]; source?: Point };
 
 const dirs: Record<Direction, Point> = {
   up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 },
@@ -48,6 +50,13 @@ export class Game {
   upgrades: Upgrade[] = [];
   conveyors = new Map<string,Direction>();
   ghostGraves: Point[] = [];
+  cannonLanes: CannonLane[] = [];
+  cannonShots: CannonShot[] = [];
+  cannonWarning: { lane: number; remaining: number } | null = null;
+  private cannonCountdown = 4.2;
+  private nextCannonLane = 0;
+  private cannonShotId = 0;
+  private cannonPlayerHit = false;
   events: GameEvent[] = [];
   player = { x: 1, y: 1, lives: 3, shield: 0, invincible: 0, range: 1, capacity: 1, speed: 0, remote: false, bombPass: false, blockPass: false, glove: false, kick: false, powerBomb: false, pierce: false, slime: false, curse: 0, curseType: null as CurseType|null, facing: 'down' as Direction };
   carriedBombId: number | null = null;
@@ -68,8 +77,10 @@ export class Game {
   tile(x: number, y: number): Tile { return this.inBounds(x, y) ? this.tiles[y][x] : 1; }
   reset(seed = Date.now()) {
     this.randomState = seed >>> 0;
-    this.portal=this.map==='foundry'||this.map==='market'?{x:9,y:5}:this.map==='graveyard'?{x:7,y:5}:{x:9,y:7};
+    this.portal=this.map==='foundry'||this.map==='market'?{x:9,y:5}:this.map==='graveyard'||this.map==='pirate'?{x:7,y:5}:{x:9,y:7};
     this.ghostGraves=this.map==='graveyard'?[{x:3,y:3},{x:9,y:7}]:[];
+    this.cannonLanes=this.map==='pirate'?[{x:2,y:3,direction:'right',endX:10},{x:10,y:7,direction:'left',endX:2}]:[];
+    this.cannonShots=[];this.cannonWarning=null;this.cannonCountdown=4.2;this.nextCannonLane=0;this.cannonPlayerHit=false;
     this.tiles = Array.from({ length: HEIGHT }, (_, y) => Array.from({ length: WIDTH }, (_, x): Tile => {
       if (x === 0 || y === 0 || x === WIDTH - 1 || y === HEIGHT - 1) return 1;
       if(this.map==='foundry'){
@@ -98,6 +109,10 @@ export class Game {
       for(const grave of this.ghostGraves)this.tiles[grave.y][grave.x]=0;
       this.tiles[2][3]=0;
       this.tiles[8][9]=0;
+    }
+    if(this.map==='pirate')for(const lane of this.cannonLanes){
+      this.tiles[lane.y][lane.x]=1;
+      for(let x=3;x<=9;x++)this.tiles[lane.y][x]=0;
     }
     this.tiles[this.portal.y][this.portal.x] = 2;
     this.fire.clear(); this.fireKinds.clear(); this.bombs = []; this.upgrades = []; this.events = []; this.carriedBombId = null;this.autoBombTimer=0;
@@ -238,6 +253,7 @@ export class Game {
     }
     const exploding = this.bombs.filter(b => !b.remote && (b.fuse -= dt) <= 0);
     for (const bomb of exploding) this.explode(bomb);
+    this.updateCannons(dt);
     for (const enemy of this.enemies) {
       if (!enemy.alive) continue;
       if (this.difficulty === 'training') continue;
@@ -257,6 +273,37 @@ export class Game {
       }
     }
     this.checkHazards(); this.checkWin();
+  }
+  private updateCannons(dt:number){
+    if(this.map!=='pirate')return;
+    this.cannonPlayerHit=false;
+    this.cannonCountdown-=dt;
+    this.cannonWarning=this.cannonCountdown<=1.8?{lane:this.nextCannonLane,remaining:Math.max(0,this.cannonCountdown)}:null;
+    if(this.cannonCountdown<=0){
+      const lane=this.cannonLanes[this.nextCannonLane];
+      this.cannonShots.push({id:++this.cannonShotId,x:lane.x,y:lane.y,direction:lane.direction});
+      this.events.push({type:'cannonFire',x:lane.x,y:lane.y});
+      this.nextCannonLane=(this.nextCannonLane+1)%this.cannonLanes.length;
+      this.cannonCountdown+=6.8;this.cannonWarning=null;
+    }
+    for(const shot of [...this.cannonShots]){
+      const start=shot.x,step=(shot.direction==='right'?1:-1)*4.5*dt;
+      shot.x+=step;
+      const low=Math.min(start,shot.x),high=Math.max(start,shot.x);
+      const inPath=(x:number,y:number,radius=0.35)=>Math.abs(y-shot.y)<radius+0.22&&x>=low-radius-0.22&&x<=high+radius+0.22;
+      const bomb=this.bombs.find(b=>!b.carried&&inPath(b.x,b.y,0.3));
+      const enemy=this.enemies.find(e=>e.alive&&inPath(e.x,e.y,0.24));
+      const hitPlayer=inPath(this.player.x,this.player.y,0.25);
+      const lane=this.cannonLanes.find(l=>l.y===shot.y)!;
+      if(bomb||enemy||hitPlayer||(shot.direction==='right'?shot.x>=lane.endX:shot.x<=lane.endX)){
+        this.cannonShots.splice(this.cannonShots.indexOf(shot),1);
+        const impactX=bomb?.x??enemy?.x??(hitPlayer?this.player.x:shot.x);
+        this.events.push({type:'cannonImpact',x:Math.round(impactX),y:shot.y});
+        if(bomb)this.explode(bomb,true);
+        if(enemy?.alive){enemy.alive=false;this.events.push({type:'enemy',x:Math.round(enemy.x),y:Math.round(enemy.y)});}
+        if(hitPlayer)this.cannonPlayerHit=true;
+      }
+    }
   }
   private blastFootprint(x: number, y: number, range: number) {
     const cells = new Set<string>([Game.key(x,y)]);
@@ -420,7 +467,9 @@ export class Game {
       enemy.alive=false; this.events.push({type:'enemy',x:Math.round(enemy.x),y:Math.round(enemy.y)});
     }
     const inFire = fireCells.some(([x,y])=>circleTouchesSquare(this.player.x,this.player.y,PLAYER_RADIUS,x,y,0.44));
-    const dangerous = inFire || (this.difficulty!=='training' && this.enemies.some(e=>e.alive && Math.hypot(e.x-this.player.x,e.y-this.player.y)<PLAYER_RADIUS*2));
+    const inCannon=this.cannonPlayerHit||this.cannonShots.some(shot=>Math.abs(shot.x-this.player.x)<0.5&&Math.abs(shot.y-this.player.y)<0.5);
+    this.cannonPlayerHit=false;
+    const dangerous = inFire || inCannon || (this.difficulty!=='training' && this.enemies.some(e=>e.alive && Math.hypot(e.x-this.player.x,e.y-this.player.y)<PLAYER_RADIUS*2));
     if (dangerous && this.player.invincible<=0) {
       if (this.player.shield>0) {
         this.player.shield=0; this.player.invincible=0.8;

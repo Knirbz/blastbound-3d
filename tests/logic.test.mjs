@@ -377,3 +377,33 @@ test('a blocked ghost grave delays transport, and sliding bombs also warp',()=>{
   assert.deepEqual({x:game.bombs[0].x,y:game.bombs[0].y},{x:9,y:7});
   assert.equal(game.bombs[0].moving,undefined);
 });
+
+test('pirate cannon lanes stay open and warn before alternating shots',()=>{
+  const game=new Game(45,'training','pirate');
+  assert.equal(game.tiles.length,11);
+  assert.equal(game.tiles[0].length,13);
+  assert.deepEqual(game.cannonLanes,[{x:2,y:3,direction:'right',endX:10},{x:10,y:7,direction:'left',endX:2}]);
+  assert.equal(game.tile(2,3),1);
+  assert.equal(game.tile(10,7),1);
+  for(let x=3;x<=9;x++){assert.equal(game.tile(x,3),0);assert.equal(game.tile(x,7),0);}
+  game.start();for(let i=0;i<31;i++)game.update(0.1);
+  assert.equal(game.cannonWarning?.lane,0);
+  for(let i=0;i<13;i++)game.update(0.1);
+  assert.equal(game.cannonShots[0]?.direction,'right');
+  assert.equal(game.drainEvents().some(event=>event.type==='cannonFire'),true);
+  for(let i=0;i<70;i++)game.update(0.1);
+  assert.equal(game.drainEvents().some(event=>event.type==='cannonFire'&&event.y===7),true);
+});
+
+test('a pirate cannon shot chains bombs and can hurt the player',()=>{
+  const game=new Game(46,'training','pirate');game.start();
+  game.bombs.push({x:4,y:3,id:999,range:1,fuse:30,ownerPass:false,owner:999,remote:true});
+  for(let i=0;i<50;i++)game.update(0.1);
+  assert.equal(game.bombs.length,0);
+  assert.equal(game.drainEvents().some(event=>event.type==='explode'&&event.kind==='chain'),true);
+  const playerGame=new Game(47,'training','pirate');playerGame.start();
+  playerGame.player.x=5;playerGame.player.y=3;
+  for(let i=0;i<50;i++)playerGame.update(0.1);
+  assert.equal(playerGame.player.lives,2);
+  assert.equal(playerGame.drainEvents().some(event=>event.type==='hit'),true);
+});

@@ -23,8 +23,8 @@ const difficultyDescriptions:Record<Difficulty,string>={
   hard:'Schnelle Bots mit stärkeren Bomben.',
 };
 const difficultyNames:Record<Difficulty,string>={training:'Training',easy:'Leicht',medium:'Mittel',hard:'Schwer'};
-const mapNames:Record<MapType,string>={courtyard:'Burghof',foundry:'Werkhalle',market:'Kassenchaos',graveyard:'Spukfriedhof'};
-const mapDescriptions:Record<MapType,string>={courtyard:'Klassische Kisten und feste Mauern.',foundry:'Förderbänder bewegen gelegte Bomben.',market:'Regale freisprengen. Einkaufswagen fahren Bomben durch die Kassenbahnen.',graveyard:'Bomben auf Spukgräbern erscheinen am anderen Grab.'};
+const mapNames:Record<MapType,string>={courtyard:'Burghof',foundry:'Werkhalle',market:'Kassenchaos',graveyard:'Spukfriedhof',pirate:'Kanonenbucht'};
+const mapDescriptions:Record<MapType,string>={courtyard:'Klassische Kisten und feste Mauern.',foundry:'Förderbänder bewegen gelegte Bomben.',market:'Regale freisprengen. Einkaufswagen fahren Bomben durch die Kassenbahnen.',graveyard:'Bomben auf Spukgräbern erscheinen am anderen Grab.',pirate:'Küstenkanonen feuern abwechselnd durch zwei freie Bahnen.'};
 const characters = [
   {id:'character-female-a',name:'Lina'},
   {id:'character-female-b',name:'Mira'},
@@ -77,10 +77,12 @@ const floorMats=['#4b627f','#506783','#48607d','#4d6580'].map(color=>mat(color,0
 const foundryFloorMats=['#4c5361','#545c68','#444e5f','#59616c'].map(color=>mat(color,0.73,0.14));
 const marketFloorMats=['#667b72','#70847b','#60746b','#75877d'].map(color=>mat(color,0.82));
 const graveyardFloorMats=['#525b63','#596269','#4c5660','#616970'].map(color=>mat(color,0.9));
+const pirateFloorMats=['#82634d','#8c6c53','#7d5e49','#907059'].map(color=>mat(color,0.89));
 const floorEdge=mat('#263a58');
 const foundryEdge=mat('#343a4b',0.55,0.3);
 const marketEdge=mat('#677e78',0.67);
 const graveyardEdge=mat('#3a3d51',0.85);
+const pirateEdge=mat('#514137',0.86);
 const stone=mat('#347c98',0.68), stoneTop=mat('#62c9ca',0.5), stoneTrim=mat('#20526f');
 const wood=mat('#bf794f',0.72), woodTop=mat('#e29a64',0.7), woodTrim=mat('#81563f',0.78), woodNail=mat('#e7c88a',0.3,0.55);
 const foundrySteel=mat('#303c4e',0.48,0.52),foundryTrim=mat('#a8aeb1',0.34,0.55),foundryGold=new THREE.MeshStandardMaterial({color:'#ff9d35',emissive:'#a8450a',emissiveIntensity:0.4,roughness:0.43,metalness:0.16});
@@ -165,7 +167,9 @@ const floorBase=rounded(WIDTH+0.28,0.34,HEIGHT+0.28,0.14,floorEdge); floorBase.p
 const floorCells:THREE.Mesh[]=[];
 const marketFloor=new THREE.Group();board.add(marketFloor);
 const graveyardFloor=new THREE.Group();board.add(graveyardFloor);
+const pirateFloor=new THREE.Group();board.add(pirateFloor);
 const ghostGraveVisuals=new THREE.Group();board.add(ghostGraveVisuals);
+const cannonWarningVisuals=new THREE.Group();board.add(cannonWarningVisuals);
 for(let y=0;y<HEIGHT;y++)for(let x=0;x<WIDTH;x++){
   const variation=(x*17+y*31+x*y*7)%floorMats.length;
   const cell=mesh(new THREE.BoxGeometry(0.995,0.07,0.995),floorMats[variation],false);
@@ -188,17 +192,20 @@ function applyMapTheme(){
   const foundry=game.map==='foundry';
   const market=game.map==='market';
   const graveyard=game.map==='graveyard';
+  const pirate=game.map==='pirate';
   marketFloor.visible=market&&marketFloor.children.length>0;
   graveyardFloor.visible=graveyard&&graveyardFloor.children.length>0;
+  pirateFloor.visible=pirate&&pirateFloor.children.length>0;
   ghostGraveVisuals.visible=graveyard;
+  cannonWarningVisuals.visible=pirate;
   for(let i=0;i<floorCells.length;i++){
-    floorCells[i].material=(foundry?foundryFloorMats:market?marketFloorMats:graveyard?graveyardFloorMats:floorMats)[i%4];
-    floorCells[i].visible=!marketFloor.visible&&!graveyardFloor.visible;
+    floorCells[i].material=(foundry?foundryFloorMats:market?marketFloorMats:graveyard?graveyardFloorMats:pirate?pirateFloorMats:floorMats)[i%4];
+    floorCells[i].visible=!marketFloor.visible&&!graveyardFloor.visible&&!pirateFloor.visible;
   }
-  floorBase.material=foundry?foundryEdge:market?marketEdge:graveyard?graveyardEdge:floorEdge;
-  (rimBase.material as THREE.MeshStandardMaterial).color.set(foundry?'#242936':market?'#536e68':graveyard?'#292b3d':'#202d48');
-  scene.background=new THREE.Color(foundry?'#191b2a':market?'#1c2831':graveyard?'#1a1a29':'#171e34');
-  if(scene.fog instanceof THREE.Fog)scene.fog.color.set(foundry?'#191b2a':market?'#1c2831':graveyard?'#1a1a29':'#171e34');
+  floorBase.material=foundry?foundryEdge:market?marketEdge:graveyard?graveyardEdge:pirate?pirateEdge:floorEdge;
+  (rimBase.material as THREE.MeshStandardMaterial).color.set(foundry?'#242936':market?'#536e68':graveyard?'#292b3d':pirate?'#3d352f':'#202d48');
+  scene.background=new THREE.Color(foundry?'#191b2a':market?'#1c2831':graveyard?'#1a1a29':pirate?'#1a2531':'#171e34');
+  if(scene.fog instanceof THREE.Fog)scene.fog.color.set(foundry?'#191b2a':market?'#1c2831':graveyard?'#1a1a29':pirate?'#1a2531':'#171e34');
   for(const child of [...conveyorVisuals.children]){conveyorVisuals.remove(child);disposeVisualGeometry(child);}
   if(!foundry)return;
   const arrowShape=new THREE.Shape();arrowShape.moveTo(-0.16,-0.12);arrowShape.lineTo(0.02,-0.12);arrowShape.lineTo(0.02,-0.22);arrowShape.lineTo(0.23,0);arrowShape.lineTo(0.02,0.22);arrowShape.lineTo(0.02,0.12);arrowShape.lineTo(-0.16,0.12);arrowShape.closePath();
@@ -543,6 +550,9 @@ type MarketProp='column'|'floor'|'shelf-boxes'|'shelf-bags'|'shelf-end'|'freezer
 const marketModels=new Map<MarketProp,THREE.Object3D>();
 type GraveyardProp='stone-wall-column'|'altar-stone'|'crypt-small'|'coffin'|'coffin-old'|'pumpkin'|'pumpkin-tall'|'grave-border'|'character-ghost'|'lantern-glass'|'floor-road';
 const graveyardModels=new Map<GraveyardProp,THREE.Object3D>();
+type PirateProp='barrel'|'cannon-ball'|'cannon'|'castle-wall'|'chest'|'crate-bottles'|'crate'|'flag-pirate'|'platform-planks'|'rocks-a'|'rocks-b'|'tower-base';
+const pirateModels=new Map<PirateProp,THREE.Object3D>();
+const cannonShotObjects=new Map<number,THREE.Object3D>();
 function prepareTileModel(gltf:GLTF,width:number,height:number,fullFootprint=false){
   const model=gltf.scene;
   const bounds=new THREE.Box3().setFromObject(model);
@@ -661,6 +671,38 @@ async function loadGraveyardAssets(){
   applyMapTheme();
   if(game.map==='graveyard')rebuildStaticProps();
 }
+async function loadPirateAssets(){
+  const assets:[PirateProp,number,number][]=[
+    ['barrel',0.83,0.78],['cannon-ball',0.44,0.44],['cannon',0.86,0.78],
+    ['castle-wall',0.93,0.96],['chest',0.84,0.72],['crate-bottles',0.86,0.78],
+    ['crate',0.87,0.76],['flag-pirate',0.32,0.62],
+    ['platform-planks',1,0.09],['rocks-a',0.92,0.9],['rocks-b',0.92,0.9],['tower-base',0.93,0.98],
+  ];
+  await Promise.all(assets.map(async ([name,width,height])=>{
+    try{
+      const gltf=await assetLoader.loadAsync(`/assets/kenney/pirate/${name}.glb`);
+      pirateModels.set(name,prepareTileModel(gltf,width,height));
+    }catch(error){console.warn(`Kenney pirate ${name} asset unavailable`,error);}
+  }));
+  const floor=pirateModels.get('platform-planks');
+  if(floor){
+    pirateFloor.clear();
+    for(let y=0;y<HEIGHT;y++)for(let x=0;x<WIDTH;x++){
+      const cell=floor.clone(true);cell.position.set(x-6,-0.03,y-5);pirateFloor.add(cell);
+    }
+  }
+  cannonWarningVisuals.clear();
+  for(const lane of [{x:2,y:3},{x:10,y:7}]){
+    const signals=new THREE.Group();signals.userData.lane=lane.y===3?0:1;
+    for(let x=3;x<=9;x++){
+      const warning=new THREE.Sprite(fxMaterial(fxTextures.flare,'#ff7a36',0.9));
+      warning.position.set(x-6,0.29,lane.y-5);warning.scale.set(1.3,1.3,1);signals.add(warning);
+    }
+    signals.visible=false;cannonWarningVisuals.add(signals);
+  }
+  applyMapTheme();
+  if(game.map==='pirate')rebuildStaticProps();
+}
 function rebuildStaticProps(){
   for(const obj of tileObjects.values())removeTileObject(obj);
   tileObjects.clear();syncStatic();
@@ -693,6 +735,24 @@ function tileModel(x:number,y:number,tile:1|2){
     if(tile===2&&x===game.portal.x&&y===game.portal.y){
       const lamp=graveyardModels.get('lantern-glass')?.clone(true);
       if(lamp){lamp.position.set(0,0.57,0);group.add(lamp);}
+    }
+    return group;
+  }
+  if(game.map==='pirate'){
+    const cannon=game.cannonLanes.find(lane=>lane.x===x&&lane.y===y);
+    const corner=(x===0||x===WIDTH-1)&&(y===0||y===HEIGHT-1);
+    const variant=(x*7+y*11+x*y*3)%9;
+    const name:PirateProp=tile===1?(cannon?'cannon':corner?'tower-base':variant===0?'rocks-a':variant===4?'rocks-b':'castle-wall'):
+      x===game.portal.x&&y===game.portal.y?'chest':
+      (['crate','barrel','crate-bottles','crate','barrel','crate','crate-bottles','crate','barrel'] as const)[variant];
+    const template=pirateModels.get(name);
+    if(!template)return tile===1?stoneBlock():crate();
+    const group=new THREE.Group(),model=template.clone(true);
+    model.rotation.y=cannon?(cannon.direction==='right'?-Math.PI/2:Math.PI/2):((x+y)%2)*Math.PI/2;
+    group.add(model);
+    if(cannon){
+      const flag=pirateModels.get('flag-pirate')?.clone(true);
+      if(flag){flag.position.set(cannon.direction==='right'?-0.26:0.26,0.28,0.28);group.add(flag);}
     }
     return group;
   }
@@ -764,7 +824,7 @@ function renderDifficultyOptions(){
 }
 function renderMapOptions(){
   const introCopy=document.querySelector<HTMLElement>('#intro-copy')!;
-  const updateCopy=()=>{introCopy.textContent=selectedMap==='foundry'?'Sprenge Energiecontainer. Auf den markierten Förderbändern fahren gelegte Bomben weiter.':selectedMap==='market'?'Räume die Regale frei. Einkaufswagen nehmen Bomben auf und fahren sie durch zwei Kassenbahnen.':selectedMap==='graveyard'?'Sprenge Särge und Kürbisse. Bomben auf einem Spukgrab erscheinen am zweiten Grab – mit laufendem Zünder.':'Sprenge Holzkisten und Fässer, locke Gegner in die Kreuzexplosion und erreiche das Portal.';};
+  const updateCopy=()=>{introCopy.textContent=selectedMap==='foundry'?'Sprenge Energiecontainer. Auf den markierten Förderbändern fahren gelegte Bomben weiter.':selectedMap==='market'?'Räume die Regale frei. Einkaufswagen nehmen Bomben auf und fahren sie durch zwei Kassenbahnen.':selectedMap==='graveyard'?'Sprenge Särge und Kürbisse. Bomben auf einem Spukgrab erscheinen am zweiten Grab – mit laufendem Zünder.':selectedMap==='pirate'?'Sprenge Kisten und Fässer. Achte auf die Warnlichter: Die Kanonen feuern abwechselnd durch freie Gänge.':'Sprenge Holzkisten und Fässer, locke Gegner in die Kreuzexplosion und erreiche das Portal.';};
   for(const button of mapOptions.querySelectorAll<HTMLButtonElement>('[data-map]')){
     const map=button.dataset.map as MapType;
     button.setAttribute('aria-pressed',String(map===selectedMap));
@@ -919,6 +979,23 @@ function syncDynamic(){
     apparition.visible=!game.bombs.some(b=>b.x===grave.x&&b.y===grave.y&&!b.carried);
     apparition.position.y=0.19+0.06*Math.sin(performance.now()*0.003+grave.x);
   }
+  for(const warning of cannonWarningVisuals.children){
+    warning.visible=game.map==='pirate'&&game.cannonWarning?.lane===warning.userData.lane;
+    if(warning.visible)for(const flare of warning.children)
+      (flare as THREE.Sprite).material.opacity=0.67+0.28*(0.5+0.5*Math.sin(performance.now()*0.023));
+  }
+  for(const shot of game.cannonShots){
+    let object=cannonShotObjects.get(shot.id);
+    if(!object){
+      const model=pirateModels.get('cannon-ball');
+      if(!model)continue;
+      object=model.clone(true);effects.add(object);cannonShotObjects.set(shot.id,object);
+    }
+    object.position.copy(world(shot));object.position.y=0.26;object.rotation.z+=0.12;
+  }
+  for(const [id,object] of cannonShotObjects)if(!game.cannonShots.some(shot=>shot.id===id)){
+    effects.remove(object);cannonShotObjects.delete(id);
+  }
   const t=performance.now()*0.002;
   playerObject.position.y=0.025*Math.sin(t*2);
 }
@@ -926,6 +1003,7 @@ function clearObjects(){
   for(const obj of tileObjects.values())removeTileObject(obj);tileObjects.clear();
   for(const obj of bombObjects.values()){props.remove(obj);disposeBombObject(obj);}bombObjects.clear();
   for(const obj of cartObjects.values())props.remove(obj);cartObjects.clear();
+  for(const obj of cannonShotObjects.values())effects.remove(obj);cannonShotObjects.clear();
   for(const obj of enemyObjects.values())actors.remove(obj);enemyObjects.clear();
   for(const art of enemyArt.values())art.mixer.stopAllAction();enemyArt.clear();
   for(const obj of fireObjects.values()){effects.remove(obj);disposeFireObject(obj);}fireObjects.clear();firePatterns.clear();
@@ -999,6 +1077,7 @@ function updateHud(){
   if(game.player.pierce)labels.push('SUPERBOMBE');
   if(game.player.slime)labels.push('SCHLEIMBOMBE');
   if(game.player.powerBomb)labels.push('POWERBOMBE BEREIT');
+  if(game.cannonWarning)labels.push(`KANONE LÄDT: ${game.cannonWarning.lane===0?'OBERE':'UNTERE'} BAHN`);
   if(game.player.curse>0)labels.push(`FLUCH: ${game.player.curseType==='slow'?'LANGSAM':game.player.curseType==='fast'?'ZU SCHNELL':game.player.curseType==='autoBomb'?'AUTO-BOMBEN':game.player.curseType==='noBomb'?'KEINE BOMBEN':'MINI-BOMBEN'}`);
   active.textContent=labels.join(' · ');active.classList.toggle('hidden',labels.length===0);
   const action=document.querySelector<HTMLButtonElement>('#touch-action')!;
@@ -1144,6 +1223,15 @@ function frame(now:number){
       transientSprite(event.x,event.y,fxTextures.flare,'#bdc7ff',{height:0.56,duration:0.32,opacity:0.8,startScale:0.25,endScale:1.3});
       beep(720,0.2,'sine',0.035);
     }
+    if(event.type==='cannonFire'){
+      burst(event.x,event.y,'#ffd480',10);
+      transientSprite(event.x,event.y,fxTextures.smoke,'#59626b',{height:0.52,duration:0.4,opacity:0.45,startScale:0.25,endScale:1.05,additive:false});
+      noiseHit(0.22,0.085,180);
+    }
+    if(event.type==='cannonImpact'){
+      burst(event.x,event.y,'#ffda8b',9);
+      transientSprite(event.x,event.y,fxTextures.flare,'#ffc26d',{height:0.3,duration:0.18,opacity:0.55,startScale:0.23,endScale:0.8});
+    }
     if(event.type==='hit'){showToast('AU! EIN LEBEN VERLOREN');beep(170,0.28,'square',0.04);}
     if(event.type==='shield'){burst(event.x,event.y,'#8ec8ff',16);shockwave(event.x,event.y,'#8ec8ff',0.75);showToast('SCHILD HAT DICH GESCHÜTZT!');beep(520,0.21,'triangle',0.04);}
     if(event.type==='upgrade'){
@@ -1161,4 +1249,4 @@ function frame(now:number){
   if(cameraJolt>0){camera.position.x+=Math.sin(now*0.071)*cameraJolt;camera.position.z+=Math.sin(now*0.096)*cameraJolt*0.6;}
   if(game.status==='running'){playerArt?.mixer.update(dt);for(const art of enemyArt.values())art.mixer.update(dt);}updateHud();renderer.render(scene,camera);
 }
-playerObject.position.copy(world(game.player));applyMapTheme();syncStatic();renderCharacterOptions();renderDifficultyOptions();renderMapOptions();loadKenneyAssets();void loadDungeonAssets();void loadMarketAssets();void loadGraveyardAssets();updateHud();requestAnimationFrame(frame);
+playerObject.position.copy(world(game.player));applyMapTheme();syncStatic();renderCharacterOptions();renderDifficultyOptions();renderMapOptions();loadKenneyAssets();void loadDungeonAssets();void loadMarketAssets();void loadGraveyardAssets();void loadPirateAssets();updateHud();requestAnimationFrame(frame);
