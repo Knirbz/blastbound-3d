@@ -154,3 +154,48 @@
   #intro .difficulty-options button,#intro .map-options button{min-height:29px;font-size:10px}
   #intro .primary-button{min-height:36px;font-size:16px}
 }
+
+/* Main menu and free-play lobby */
+.main-menu,#options-menu{position:fixed;inset:0;z-index:20;overflow-y:auto;background:radial-gradient(circle at 50% 20%,#2b3d60,#10182c 72%)}
+.options-card{overflow-y:auto}
+.main-menu-card{width:min(510px,100%)}
+.main-menu-card .intro-copy{margin:12px auto 18px}
+.main-menu-actions{display:grid;gap:9px}
+.main-menu-choice{width:100%;padding:13px 17px;text-align:left;border:1px solid #627896;border-radius:12px;background:linear-gradient(110deg,#33476c,#263754);color:#f1f7ff;box-shadow:inset 0 1px #ffffff25;transition:transform .15s,border-color .15s,background .15s}
+.main-menu-choice:hover{transform:translateY(-2px);border-color:#78edda;background:linear-gradient(110deg,#3b6474,#304a66)}
+.main-menu-choice strong{display:flex;align-items:center;justify-content:space-between;font-family:'Barlow Condensed',Impact,sans-serif;font-size:23px;font-weight:900;letter-spacing:1px}
+.main-menu-choice strong span{color:#7befdc;font-size:27px;line-height:1}
+.main-menu-choice small{display:block;margin-top:2px;color:#bbcae0;font-size:11px;line-height:1.35}
+.main-menu-choice:first-child{border-color:#70e9d6;background:linear-gradient(110deg,#28616a,#29435e)}
+.options-card{max-width:410px}
+.options-card h2{font-size:clamp(40px,6vw,56px);margin-bottom:20px}
+.option-row{width:100%;min-height:53px;margin:0 0 9px;padding:10px 15px;display:flex;align-items:center;justify-content:space-between;border:1px solid #637b99;border-radius:10px;background:#263957;color:#dceaff;font-family:'Barlow Condensed',Impact,sans-serif;font-size:17px;font-weight:800;letter-spacing:1px}
+.option-row strong{color:#7cf0dc;font-size:19px}
+.option-hint{margin:8px 0 20px;text-align:left;color:#b6c8da;font-size:12px;line-height:1.45}
+.lobby-toolbar{position:relative;z-index:3;display:flex;justify-content:space-between;align-items:center;gap:10px;min-height:45px;padding:6px 17px;border-bottom:1px solid #8be8dc88;background:#17384b;pointer-events:auto}
+.lobby-toolbar>div:first-child{display:flex;flex-direction:column;gap:2px;min-width:0}
+.lobby-toolbar strong{font-family:'Barlow Condensed',Impact,sans-serif;color:#8df2df;font-size:17px;letter-spacing:1px}
+.lobby-toolbar span{font-size:11px;color:#c4d6e8}
+.lobby-actions{display:flex;flex:none;gap:6px}
+.lobby-actions button{padding:7px 9px;border:1px solid #6b8da8;border-radius:7px;background:#2b4c65;color:#e9fbff;font-family:'Barlow Condensed',Impact,sans-serif;font-size:13px;font-weight:800;letter-spacing:.4px}
+.lobby-actions button:hover{background:#3e7280;border-color:#88e9d8}
+.lobby-actions button:first-child{background:#31766f;border-color:#72e5d2}
+@media(max-width:760px){
+  .main-menu,#options-menu{position:fixed;inset:0;z-index:20;padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));background:radial-gradient(circle at 50% 20%,#2b3d60,#10182c 72%);overflow-y:auto}
+  .main-menu-card,.options-card{max-height:calc(100dvh - 24px);overflow-y:auto;padding:20px}
+  .main-menu-card h1{font-size:clamp(44px,11vw,62px)}
+  .main-menu-choice{padding:12px 14px}
+  .main-menu-choice strong{font-size:21px}
+  #app:has(.main-menu:not(.hidden)) .mobile-controls,#app:has(#options-menu:not(.hidden)) .mobile-controls{display:none!important}
+  .lobby-toolbar{min-height:36px;padding:4px 7px}
+  .lobby-toolbar strong{font-size:13px}
+  .lobby-toolbar span{display:none}
+  .lobby-actions button{padding:5px 6px;font-size:11px}
+  .game-panel:has(.lobby-toolbar:not(.hidden)) .stage{height:clamp(240px,calc(100dvh - 336px),374px)}
+}
+@media(max-height:520px){.main-menu-card{padding:12px 17px}.main-menu-card .intro-copy{display:none}.main-menu-choice{padding:8px 12px}.main-menu-actions{gap:5px}}
+@media(min-width:761px){
+  .game-panel:has(.lobby-toolbar:not(.hidden)) .stage{height:clamp(455px,calc(100dvh - 285px),605px)}
+  #intro{position:fixed;inset:0;z-index:20;background:radial-gradient(circle at 50% 20%,#2b3d60,#10182c 72%)}
+  #intro .intro-card{max-height:calc(100dvh - 24px);overflow-y:auto}
+}

@@ -17,11 +17,13 @@ npm run dev
 - **P** oder **Escape**: Pause
 - Auf Smartphones: linken Daumen auf dem runden Pad bewegen; die rechte Hälfte der Spiel- und Steuerfläche antippen, um eine Bombe zu legen
 
-Im laufenden Spiel verhindern das Spielfeld und die Touchsteuerung Browser-Zoomgesten. Die mobile Startauswahl füllt den Bildschirm; Figur, Bot-Modus, Karte und Startknopf sind ohne Scrollen erreichbar, auch auf kurzen Displays im Querformat.
+Im laufenden Spiel verhindern das Spielfeld und die Touchsteuerung Browser-Zoomgesten. Hauptmenü und Startauswahl füllen auf Mobilgeräten den Bildschirm.
 
 Halte eine Richtung gedrückt, um dich frei zwischen den Feldern zu bewegen. Zwei Richtungen gleichzeitig ergeben eine diagonale Bewegung. Wände, Kisten und Bomben blockieren die Figur direkt an ihrer Kante; Explosionen können sie auch treffen, wenn sie nur teilweise in einem betroffenen Feld steht. Bomben werden auf dem nächstgelegenen Feld platziert.
 
-Vor dem Start kannst du eine von sechs Kenney-Figuren, den Bot-Modus **Training**, **Leicht**, **Mittel** oder **Schwer** und eine Karte auswählen. Die Einstellungen werden im Browser gespeichert. Im Training stehen die Bots still und greifen nicht an. In den anderen Modi bewegen sie sich und legen eigene Bomben; sie blockieren damit keine Bombenplätze des Spielers. Schwere Bots suchen Wege um feste Blöcke herum. Über das Pausemenü oder nach einer Runde führt „Figur / Modus ändern“ zurück zur Auswahl.
+Das Hauptmenü bietet **Gegen CPU**, **Lobby erstellen** und **Optionen**. Gegen CPU führt zur Auswahl einer von sechs Kenney-Figuren, des Bot-Modus **Training**, **Leicht**, **Mittel** oder **Schwer** und einer Karte. Die Auswahl wird im Browser gespeichert. Im Training stehen die Bots still und greifen nicht an. In den anderen Modi bewegen sie sich und legen eigene Bomben; sie blockieren damit keine Bombenplätze des Spielers. Schwere Bots suchen Wege um feste Blöcke herum. Über das Pausemenü oder nach einer Runde geht es zurück ins Hauptmenü.
+
+**Lobby erstellen** öffnet derzeit eine lokale Übungs-Lobby auf einem kompakten 7 × 7-Feld. Hier kannst du frei laufen, Bomben legen und zufällig erscheinende Upgrades sammeln. Drei Upgrades liegen zum Start bereit, danach erscheint alle 4,5 Sekunden ein weiteres, solange weniger als fünf auf dem Feld sind. Bombentreffer beenden die Übungsrunde nicht. Die Lobby enthält noch keine Online-Mitspieler oder Raumcodes. Im Menü **Optionen** lassen sich Ton und Renderauflösung einstellen.
 
 Der **Burghof** bleibt die klassische Karte mit Kenney-Holzobjekten. Die **Werkhalle** verwendet dunkle, feste Metallblöcke und leuchtend orange zerstörbare Energiecontainer. Auf zwei markierten Förderbahnen fahren dort gelegte Bomben alle 0,55 Sekunden ein Feld weiter, bis sie am Ende oder vor einer anderen Bombe stehen bleiben. Der Zünder läuft währenddessen weiter.
 

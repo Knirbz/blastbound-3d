@@ -5,7 +5,7 @@ export const ENEMY_SPEED = 1.45;
 export const BOMB_FUSE = 2.8;
 export const FIRE_DURATION = 0.56;
 export type Difficulty = 'training' | 'easy' | 'medium' | 'hard';
-export type MapType = 'courtyard' | 'foundry' | 'market' | 'graveyard' | 'pirate';
+export type MapType = 'courtyard' | 'foundry' | 'market' | 'graveyard' | 'pirate' | 'lobby';
 const difficultySettings: Record<Difficulty, { speed: number; focus: number; cooldown: number; range: number }> = {
   training: { speed: 0, focus: 0, cooldown: Infinity, range: 0 },
   easy: { speed: 0.95, focus: 0.35, cooldown: 6, range: 1 },
@@ -57,6 +57,7 @@ export class Game {
   private nextCannonLane = 0;
   private cannonShotId = 0;
   private cannonPlayerHit = false;
+  private lobbySpawnTimer = 4.5;
   events: GameEvent[] = [];
   player = { x: 1, y: 1, lives: 3, shield: 0, invincible: 0, range: 1, capacity: 1, speed: 0, remote: false, bombPass: false, blockPass: false, glove: false, kick: false, powerBomb: false, pierce: false, slime: false, curse: 0, curseType: null as CurseType|null, facing: 'down' as Direction };
   carriedBombId: number | null = null;
@@ -77,11 +78,13 @@ export class Game {
   tile(x: number, y: number): Tile { return this.inBounds(x, y) ? this.tiles[y][x] : 1; }
   reset(seed = Date.now()) {
     this.randomState = seed >>> 0;
+    this.lobbySpawnTimer=4.5;
     this.portal=this.map==='foundry'||this.map==='market'?{x:9,y:5}:this.map==='graveyard'||this.map==='pirate'?{x:7,y:5}:{x:9,y:7};
     this.ghostGraves=this.map==='graveyard'?[{x:3,y:3},{x:9,y:7}]:[];
     this.cannonLanes=this.map==='pirate'?[{x:2,y:3,direction:'right',endX:10},{x:10,y:7,direction:'left',endX:2}]:[];
     this.cannonShots=[];this.cannonWarning=null;this.cannonCountdown=4.2;this.nextCannonLane=0;this.cannonPlayerHit=false;
     this.tiles = Array.from({ length: HEIGHT }, (_, y) => Array.from({ length: WIDTH }, (_, x): Tile => {
+      if(this.map==='lobby')return x<=2||x>=10||y<=1||y>=9?1:0;
       if (x === 0 || y === 0 || x === WIDTH - 1 || y === HEIGHT - 1) return 1;
       if(this.map==='foundry'){
         if(x%3===0&&y%2===0)return 1;
@@ -91,7 +94,7 @@ export class Game {
       return this.rand()<(this.map==='market'?0.61:this.map==='graveyard'?0.62:0.64)?2:0;
     }));
     const safe = [[1,1],[2,1],[1,2],[11,1],[10,1],[11,2],[1,9],[2,9],[1,8],[11,9],[10,9],[11,8]];
-    for (const [x,y] of safe) this.tiles[y][x] = 0;
+    if(this.map!=='lobby')for (const [x,y] of safe) this.tiles[y][x] = 0;
     this.conveyors.clear();
     if(this.map==='foundry')for(const [y,direction] of [[3,'right'],[7,'left']] as const)for(let x=3;x<=9;x++){
       this.conveyors.set(Game.key(x,y),direction);
@@ -114,11 +117,22 @@ export class Game {
       this.tiles[lane.y][lane.x]=1;
       for(let x=3;x<=9;x++)this.tiles[lane.y][x]=0;
     }
-    this.tiles[this.portal.y][this.portal.x] = 2;
+    if(this.map!=='lobby')this.tiles[this.portal.y][this.portal.x] = 2;
     this.fire.clear(); this.fireKinds.clear(); this.bombs = []; this.upgrades = []; this.events = []; this.carriedBombId = null;this.autoBombTimer=0;
-    this.player = { x: 1, y: 1, lives: 3, shield: 0, invincible: 0, range: 1, capacity: 1, speed: 0, remote: false, bombPass: false, blockPass: false, glove: false, kick: false, powerBomb: false, pierce: false, slime: false, curse: 0, curseType: null, facing: 'down' };
-    this.enemies = [{x:11,y:1},{x:1,y:9},{x:11,y:9}].map(p => ({ ...p, targetX:p.x, targetY:p.y, id: ++this.enemyId, moveTimer: 0.45 + this.rand() * 0.2, bombCooldown: 1.8 + this.rand() * 1.4, escapePath: [], alive: true, facing: 'down' as Direction }));
+    this.player = { x: this.map==='lobby'?6:1, y: this.map==='lobby'?5:1, lives: 3, shield: 0, invincible: 0, range: 1, capacity: 1, speed: 0, remote: false, bombPass: false, blockPass: false, glove: false, kick: false, powerBomb: false, pierce: false, slime: false, curse: 0, curseType: null, facing: 'down' };
+    this.enemies = this.map==='lobby'?[]:[{x:11,y:1},{x:1,y:9},{x:11,y:9}].map(p => ({ ...p, targetX:p.x, targetY:p.y, id: ++this.enemyId, moveTimer: 0.45 + this.rand() * 0.2, bombCooldown: 1.8 + this.rand() * 1.4, escapePath: [], alive: true, facing: 'down' as Direction }));
+    if(this.map==='lobby')for(let i=0;i<3;i++)this.spawnLobbyUpgrade();
     this.status = 'ready'; this.elapsed = 0;
+  }
+  private spawnLobbyUpgrade() {
+    if(this.map!=='lobby'||this.upgrades.length>=5)return;
+    const pool:UpgradeType[]=['range','capacity','speed','remote','bombPass','glove','kick','maxRange','powerBomb','pierce','slime','shield'];
+    const free:Point[]=[];
+    for(let y=2;y<=8;y++)for(let x=3;x<=9;x++)
+      if(Math.hypot(x-this.player.x,y-this.player.y)>1.2&&!this.upgrades.some(u=>u.x===x&&u.y===y)&&!this.bombs.some(b=>b.x===x&&b.y===y)&&!this.fire.has(Game.key(x,y)))free.push({x,y});
+    if(!free.length)return;
+    const cell=free[Math.floor(this.rand()*free.length)];
+    this.upgrades.push({...cell,type:pool[Math.floor(this.rand()*pool.length)]});
   }
   start() { if (this.status === 'ready') this.status = 'running'; }
   setDifficulty(difficulty: Difficulty) { if (this.status === 'ready') this.difficulty=difficulty; }
@@ -218,6 +232,10 @@ export class Game {
   update(dt: number) {
     if (this.status !== 'running') return;
     dt = Math.min(dt, 0.1); this.elapsed += dt;
+    if(this.map==='lobby'){
+      this.lobbySpawnTimer-=dt;
+      if(this.lobbySpawnTimer<=0){this.spawnLobbyUpgrade();this.lobbySpawnTimer+=4.5;}
+    }
     if (this.player.invincible > 0) this.player.invincible = Math.max(0, this.player.invincible - dt);
     if (this.player.curse > 0) {
       this.player.curse=Math.max(0,this.player.curse-dt);
@@ -471,6 +489,11 @@ export class Game {
     this.cannonPlayerHit=false;
     const dangerous = inFire || inCannon || (this.difficulty!=='training' && this.enemies.some(e=>e.alive && Math.hypot(e.x-this.player.x,e.y-this.player.y)<PLAYER_RADIUS*2));
     if (dangerous && this.player.invincible<=0) {
+      if(this.map==='lobby'){
+        this.player.invincible=1.45;
+        this.events.push({type:'hit',x:Math.round(this.player.x),y:Math.round(this.player.y)});
+        return;
+      }
       if (this.player.shield>0) {
         this.player.shield=0; this.player.invincible=0.8;
         this.events.push({type:'shield',x:Math.round(this.player.x),y:Math.round(this.player.y)});
@@ -484,6 +507,7 @@ export class Game {
     }
   }
   private checkWin() {
+    if(this.map==='lobby')return;
     if (this.status==='running' && this.enemies.every(e=>!e.alive) && Math.hypot(this.player.x-this.portal.x,this.player.y-this.portal.y)<0.4 && this.tile(this.portal.x,this.portal.y)===0) this.status='won';
   }
   drainEvents() { return this.events.splice(0); }

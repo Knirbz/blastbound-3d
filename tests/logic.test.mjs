@@ -407,3 +407,24 @@ test('a pirate cannon shot chains bombs and can hurt the player',()=>{
   assert.equal(playerGame.player.lives,2);
   assert.equal(playerGame.drainEvents().some(event=>event.type==='hit'),true);
 });
+
+test('the compact lobby stays playable and keeps spawning random upgrades',()=>{
+  const game=new Game(51,'training','lobby');
+  assert.deepEqual({x:game.player.x,y:game.player.y},{x:6,y:5});
+  assert.equal(game.enemies.length,0);
+  assert.equal(game.tile(3,2),0);
+  assert.equal(game.tile(9,8),0);
+  assert.equal(game.tile(2,5),1);
+  assert.equal(game.tile(10,5),1);
+  assert.equal(game.upgrades.length,3);
+  assert.equal(new Set(game.upgrades.map(u=>`${u.x},${u.y}`)).size,3);
+  game.start();
+  for(let i=0;i<46;i++)game.update(0.1);
+  assert.equal(game.upgrades.length,4);
+  assert.equal(game.status,'running');
+  assert.equal(game.placeBomb(),true);
+  for(let i=0;i<29;i++)game.update(0.1);
+  assert.equal(game.status,'running');
+  assert.equal(game.player.lives,3);
+  assert.equal(game.drainEvents().some(event=>event.type==='explode'),true);
+});

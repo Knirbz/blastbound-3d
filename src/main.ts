@@ -7,6 +7,9 @@ import './style.css';
 
 const stage = document.querySelector<HTMLElement>('#stage')!;
 const canvas = document.querySelector<HTMLCanvasElement>('#game-canvas')!;
+const mainMenu = document.querySelector<HTMLElement>('#main-menu')!;
+const optionsMenu = document.querySelector<HTMLElement>('#options-menu')!;
+const lobbyToolbar = document.querySelector<HTMLElement>('#lobby-toolbar')!;
 const intro = document.querySelector<HTMLElement>('#intro')!;
 const pauseMenu = document.querySelector<HTMLElement>('#pause-menu')!;
 const result = document.querySelector<HTMLElement>('#result')!;
@@ -23,8 +26,9 @@ const difficultyDescriptions:Record<Difficulty,string>={
   hard:'Schnelle Bots mit stärkeren Bomben.',
 };
 const difficultyNames:Record<Difficulty,string>={training:'Training',easy:'Leicht',medium:'Mittel',hard:'Schwer'};
-const mapNames:Record<MapType,string>={courtyard:'Burghof',foundry:'Werkhalle',market:'Kassenchaos',graveyard:'Spukfriedhof',pirate:'Kanonenbucht'};
-const mapDescriptions:Record<MapType,string>={courtyard:'Klassische Kisten und feste Mauern.',foundry:'Förderbänder bewegen gelegte Bomben.',market:'Regale freisprengen. Einkaufswagen fahren Bomben durch die Kassenbahnen.',graveyard:'Bomben auf Spukgräbern erscheinen am anderen Grab.',pirate:'Küstenkanonen feuern abwechselnd durch zwei freie Bahnen.'};
+type ArenaMap=Exclude<MapType,'lobby'>;
+const mapNames:Record<MapType,string>={courtyard:'Burghof',foundry:'Werkhalle',market:'Kassenchaos',graveyard:'Spukfriedhof',pirate:'Kanonenbucht',lobby:'Übungs-Lobby'};
+const mapDescriptions:Record<ArenaMap,string>={courtyard:'Klassische Kisten und feste Mauern.',foundry:'Förderbänder bewegen gelegte Bomben.',market:'Regale freisprengen. Einkaufswagen fahren Bomben durch die Kassenbahnen.',graveyard:'Bomben auf Spukgräbern erscheinen am anderen Grab.',pirate:'Küstenkanonen feuern abwechselnd durch zwei freie Bahnen.'};
 const characters = [
   {id:'character-female-a',name:'Lina'},
   {id:'character-female-b',name:'Mira'},
@@ -37,22 +41,26 @@ type CharacterId = typeof characters[number]['id'];
 const characterStorageKey = 'blastbound-character';
 const difficultyStorageKey = 'blastbound-difficulty';
 const mapStorageKey = 'blastbound-map';
+const graphicsStorageKey = 'blastbound-economy-graphics';
+const soundStorageKey = 'blastbound-sound';
 let selectedCharacter:CharacterId = 'character-female-b';
 let selectedDifficulty:Difficulty = 'easy';
-let selectedMap:MapType = 'courtyard';
+let selectedMap:ArenaMap = 'courtyard';
+let economyGraphics=false;
 try {
   const saved = localStorage.getItem(characterStorageKey);
   if(characters.some(character=>character.id===saved))selectedCharacter=saved as CharacterId;
   const savedDifficulty=localStorage.getItem(difficultyStorageKey);
   if(savedDifficulty&&Object.hasOwn(difficultyDescriptions,savedDifficulty))selectedDifficulty=savedDifficulty as Difficulty;
   const savedMap=localStorage.getItem(mapStorageKey);
-  if(savedMap&&Object.hasOwn(mapDescriptions,savedMap))selectedMap=savedMap as MapType;
+  if(savedMap&&Object.hasOwn(mapDescriptions,savedMap))selectedMap=savedMap as ArenaMap;
+  economyGraphics=localStorage.getItem(graphicsStorageKey)==='true';
 } catch { /* Private browsing can disable storage. */ }
 const game = new Game(Date.now(),selectedDifficulty,selectedMap);
 let renderer: THREE.WebGLRenderer;
 try { renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:false, powerPreference:'high-performance'}); }
 catch { stage.innerHTML='<div class="webgl-error">Dieses Spiel benötigt WebGL. Bitte aktiviere die Grafikhardware im Browser.</div>'; throw new Error('WebGL unavailable'); }
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, economyGraphics?1.1:2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -191,6 +199,7 @@ const rimBase=rounded(WIDTH+1.2,0.34,HEIGHT+1.2,0.22,mat('#202d48'));
 rimBase.position.y=-0.55; board.add(rimBase);
 const conveyorVisuals=new THREE.Group();board.add(conveyorVisuals);
 function applyMapTheme(){
+  const lobby=game.map==='lobby';
   const foundry=game.map==='foundry';
   const market=game.map==='market';
   const graveyard=game.map==='graveyard';
@@ -202,7 +211,8 @@ function applyMapTheme(){
   cannonWarningVisuals.visible=pirate;
   for(let i=0;i<floorCells.length;i++){
     floorCells[i].material=(foundry?foundryFloorMats:market?marketFloorMats:graveyard?graveyardFloorMats:pirate?pirateFloorMats:floorMats)[i%4];
-    floorCells[i].visible=!marketFloor.visible&&!graveyardFloor.visible&&!pirateFloor.visible;
+    const x=i%WIDTH,y=Math.floor(i/WIDTH);
+    floorCells[i].visible=!marketFloor.visible&&!graveyardFloor.visible&&!pirateFloor.visible&&(!lobby||(x>=2&&x<=10&&y>=1&&y<=9));
   }
   floorBase.material=foundry?foundryEdge:market?marketEdge:graveyard?graveyardEdge:pirate?pirateEdge:floorEdge;
   (rimBase.material as THREE.MeshStandardMaterial).color.set(foundry?'#242936':market?'#536e68':graveyard?'#292b3d':pirate?'#3d352f':'#202d48');
@@ -615,7 +625,7 @@ async function loadDungeonAssets(){
       tileModels.set(name,prepareTileModel(gltf,width,height,fullFootprint));
     }catch(error){console.warn(`Kenney ${name} asset unavailable`,error);}
   }));
-  if(game.map==='courtyard')rebuildStaticProps();
+  if(game.map==='courtyard'||game.map==='lobby')rebuildStaticProps();
 }
 async function loadMarketAssets(){
   const assets:[MarketProp,number,number][]=[
@@ -864,7 +874,7 @@ function renderMapOptions(){
   const introCopy=document.querySelector<HTMLElement>('#intro-copy')!;
   const updateCopy=()=>{introCopy.textContent=selectedMap==='foundry'?'Sprenge Energiecontainer. Auf den markierten Förderbändern fahren gelegte Bomben weiter.':selectedMap==='market'?'Räume die Regale frei. Einkaufswagen nehmen Bomben auf und fahren sie durch zwei Kassenbahnen.':selectedMap==='graveyard'?'Sprenge Särge und Kürbisse. Bomben auf einem Spukgrab erscheinen am zweiten Grab – mit laufendem Zünder.':selectedMap==='pirate'?'Sprenge Kisten und Fässer. Achte auf die Warnlichter: Die Kanonen feuern abwechselnd durch freie Gänge.':'Sprenge Holzkisten und Fässer, locke Gegner in die Kreuzexplosion und erreiche das Portal.';};
   for(const button of mapOptions.querySelectorAll<HTMLButtonElement>('[data-map]')){
-    const map=button.dataset.map as MapType;
+    const map=button.dataset.map as ArenaMap;
     button.setAttribute('aria-pressed',String(map===selectedMap));
     button.addEventListener('click',()=>{
       if(map===selectedMap)return;
@@ -888,12 +898,13 @@ function loadKenneyAssets(){
 function syncStatic(){
   for(let y=0;y<HEIGHT;y++)for(let x=0;x<WIDTH;x++){
     const id=key(x,y),tile=game.tile(x,y),existing=tileObjects.get(id);
+    if(game.map==='lobby'&&(x<2||x>10||y<1||y>9)){if(existing){removeTileObject(existing);tileObjects.delete(id);}continue;}
     if(tile===0){if(existing){removeTileObject(existing);tileObjects.delete(id);}continue;}
     if(existing)continue;
     const obj=tileModel(x,y,tile);obj.position.copy(world({x,y}));props.add(obj);tileObjects.set(id,obj);
   }
-  if(game.tile(game.portal.x,game.portal.y)===0 && !portalObjectRef){portalObjectRef=portalObject();portalObjectRef.position.copy(world(game.portal));props.add(portalObjectRef);}
-  if(game.tile(game.portal.x,game.portal.y)!==0 && portalObjectRef){props.remove(portalObjectRef);portalObjectRef=null;}
+  if(game.map!=='lobby'&&game.tile(game.portal.x,game.portal.y)===0 && !portalObjectRef){portalObjectRef=portalObject();portalObjectRef.position.copy(world(game.portal));props.add(portalObjectRef);}
+  if((game.map==='lobby'||game.tile(game.portal.x,game.portal.y)!==0) && portalObjectRef){props.remove(portalObjectRef);portalObjectRef=null;}
 }
 let playerMoving=false;
 function syncDynamic(){
@@ -1061,6 +1072,7 @@ function resize(){
 new ResizeObserver(resize).observe(stage);resize();
 
 let audioEnabled=false; let audioContext:AudioContext|null=null;
+try{audioEnabled=localStorage.getItem(soundStorageKey)==='true';}catch{ /* Sound still works for this visit. */ }
 function beep(freq:number,duration:number,type:OscillatorType='sine',volume=0.045){
   if(!audioEnabled)return;
   audioContext ??= new AudioContext();
@@ -1091,7 +1103,27 @@ function explosionSound(kind:BlastKind){
   noiseHit(0.24,kind==='powered'?0.095:0.075,kind==='chain'?650:280);
   if(kind==='chain')beep(820,0.13,'sawtooth',0.022);
 }
-document.querySelector<HTMLButtonElement>('#sound-button')!.addEventListener('click',e=>{audioEnabled=!audioEnabled;(e.currentTarget as HTMLButtonElement).classList.toggle('active',audioEnabled);(e.currentTarget as HTMLButtonElement).setAttribute('aria-label',audioEnabled?'Ton ausschalten':'Ton einschalten');beep(700,0.12);});
+function toggleSound(){
+  audioEnabled=!audioEnabled;
+  const button=document.querySelector<HTMLButtonElement>('#sound-button')!;
+  button.classList.toggle('active',audioEnabled);
+  button.setAttribute('aria-label',audioEnabled?'Ton ausschalten':'Ton einschalten');
+  document.querySelector<HTMLElement>('#options-sound strong')!.textContent=audioEnabled?'AN':'AUS';
+  try{localStorage.setItem(soundStorageKey,String(audioEnabled));}catch{ /* Sound still works for this visit. */ }
+  beep(700,0.12);
+}
+document.querySelector<HTMLButtonElement>('#sound-button')!.addEventListener('click',toggleSound);
+document.querySelector<HTMLButtonElement>('#options-sound')!.addEventListener('click',toggleSound);
+document.querySelector<HTMLElement>('#options-sound strong')!.textContent=audioEnabled?'AN':'AUS';
+document.querySelector<HTMLButtonElement>('#sound-button')!.classList.toggle('active',audioEnabled);
+document.querySelector<HTMLButtonElement>('#sound-button')!.setAttribute('aria-label',audioEnabled?'Ton ausschalten':'Ton einschalten');
+document.querySelector<HTMLButtonElement>('#options-graphics')!.addEventListener('click',()=>{
+  economyGraphics=!economyGraphics;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,economyGraphics?1.1:2));
+  document.querySelector<HTMLElement>('#options-graphics strong')!.textContent=economyGraphics?'SPARSAM':'HOCH';
+  try{localStorage.setItem(graphicsStorageKey,String(economyGraphics));}catch{ /* The setting still works for this visit. */ }
+});
+document.querySelector<HTMLElement>('#options-graphics strong')!.textContent=economyGraphics?'SPARSAM':'HOCH';
 
 let toastTimer=0;
 function showToast(message:string){toast.textContent=message;toast.classList.remove('hidden');toastTimer=1.7;}
@@ -1099,7 +1131,12 @@ function updateHud(){
   const lives=document.querySelector<HTMLElement>('#lives')!;
   lives.innerHTML=Array.from({length:3},(_,i)=>i<game.player.lives?'♥':'♡').join(' ')+(game.player.shield?' <span class="shield-hud">✦</span>':'');
   lives.setAttribute('aria-label',`${game.player.lives} Leben${game.player.shield?', Schild aktiv':''}`);
-  document.querySelector('#enemies')!.textContent=String(game.aliveEnemies).padStart(2,'0');
+  const lobby=game.map==='lobby';
+  document.querySelector('#enemies-label')!.textContent=lobby?'UPGRADES':'GEGNER';
+  document.querySelector('#enemies')!.textContent=String(lobby?game.upgrades.length:game.aliveEnemies).padStart(2,'0');
+  document.querySelector('#enemy-legend')!.classList.toggle('hidden',lobby);
+  document.querySelector('#portal-legend')!.classList.toggle('hidden',lobby);
+  document.querySelector('#stage-goal')!.textContent=lobby?'BOMBEN TESTEN · UPGRADES SAMMELN':'ZERSTÖRE ALLE GEGNER → ERREICHE DAS PORTAL';
   document.querySelector('#bombs')!.textContent=`${game.player.capacity-game.playerBombCount} / ${game.player.capacity}`;
   const seconds=Math.floor(game.elapsed);document.querySelector('#timer')!.textContent=`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;
   const pause=document.querySelector<HTMLButtonElement>('#pause-button')!;pause.innerHTML=game.status==='paused'?'▶ <span>WEITER</span>':'Ⅱ <span>PAUSE</span>';
@@ -1129,27 +1166,57 @@ function showResult(){
   document.querySelector('#result-copy')!.textContent=win?`Alle Gegner besiegt in ${Math.floor(game.elapsed)} Sekunden. Bereit für eine neue Runde?`:'Deine Leben sind aufgebraucht. Plane deinen nächsten Fluchtweg und versuch es erneut.';
   stage.classList.remove('game-active');pauseMenu.classList.add('hidden');result.classList.remove('hidden');beep(win?780:180,0.35,'triangle',0.08);
 }
-function start(restart=false){
-  if(restart){clearObjects();game.reset();playerObject.position.copy(world(game.player));syncStatic();}
-  game.start();stage.classList.add('game-active');intro.classList.add('hidden');pauseMenu.classList.add('hidden');result.classList.add('hidden');updateHud();
+function prepareMap(map:MapType){
+  clearObjects();game.map=map;game.reset();game.setDifficulty(selectedDifficulty);
+  playerObject.position.copy(world(game.player));
+  camera.zoom=map==='lobby'?1.22:1;camera.updateProjectionMatrix();
+  applyMapTheme();syncStatic();updateHud();
 }
-function returnToMenu(){
-  clearObjects();game.reset();playerObject.position.copy(world(game.player));syncStatic();
-  stage.classList.remove('game-active');pauseMenu.classList.add('hidden');result.classList.add('hidden');intro.classList.remove('hidden');updateHud();
+function showMainMenu(){
+  prepareMap(selectedMap);
+  stage.classList.remove('game-active');
+  mainMenu.classList.remove('hidden');optionsMenu.classList.add('hidden');intro.classList.add('hidden');
+  pauseMenu.classList.add('hidden');result.classList.add('hidden');lobbyToolbar.classList.add('hidden');
+}
+function openCpuSetup(){
+  prepareMap(selectedMap);
+  stage.classList.remove('game-active');
+  mainMenu.classList.add('hidden');optionsMenu.classList.add('hidden');intro.classList.remove('hidden');
+  pauseMenu.classList.add('hidden');result.classList.add('hidden');lobbyToolbar.classList.add('hidden');
+}
+function createLobby(){
+  prepareMap('lobby');game.start();
+  stage.classList.add('game-active');
+  mainMenu.classList.add('hidden');optionsMenu.classList.add('hidden');intro.classList.add('hidden');
+  pauseMenu.classList.add('hidden');result.classList.add('hidden');lobbyToolbar.classList.remove('hidden');
+  updateHud();
+}
+function start(restart=false){
+  if(restart)prepareMap(selectedMap);
+  game.start();stage.classList.add('game-active');mainMenu.classList.add('hidden');intro.classList.add('hidden');
+  pauseMenu.classList.add('hidden');result.classList.add('hidden');lobbyToolbar.classList.add('hidden');updateHud();
 }
 function togglePause(){
+  if(game.status!=='running'&&game.status!=='paused')return;
   game.togglePause();
   const paused=game.status==='paused';
   pauseMenu.classList.toggle('hidden',!paused);
-  if(paused)document.querySelector('#pause-mode')!.textContent=`${mapNames[game.map]} · Bots: ${difficultyNames[game.difficulty]}`;
+  if(paused)document.querySelector('#pause-mode')!.textContent=game.map==='lobby'?'Übungs-Lobby · Freies Spielen':`${mapNames[game.map]} · Bots: ${difficultyNames[game.difficulty]}`;
   updateHud();
 }
+document.querySelector('#menu-cpu')!.addEventListener('click',openCpuSetup);
+document.querySelector('#menu-lobby')!.addEventListener('click',createLobby);
+document.querySelector('#menu-options')!.addEventListener('click',()=>{mainMenu.classList.add('hidden');optionsMenu.classList.remove('hidden');});
+document.querySelector('#options-back')!.addEventListener('click',()=>{optionsMenu.classList.add('hidden');mainMenu.classList.remove('hidden');});
+document.querySelector('#setup-back')!.addEventListener('click',showMainMenu);
+document.querySelector('#lobby-cpu')!.addEventListener('click',openCpuSetup);
+document.querySelector('#lobby-menu')!.addEventListener('click',showMainMenu);
 document.querySelector('#start-button')!.addEventListener('click',()=>start());
 document.querySelector('#restart-button')!.addEventListener('click',()=>start(true));
-document.querySelector('#menu-button')!.addEventListener('click',returnToMenu);
+document.querySelector('#menu-button')!.addEventListener('click',showMainMenu);
 document.querySelector('#pause-button')!.addEventListener('click',togglePause);
 document.querySelector('#resume-button')!.addEventListener('click',togglePause);
-document.querySelector('#pause-menu-button')!.addEventListener('click',returnToMenu);
+document.querySelector('#pause-menu-button')!.addEventListener('click',showMainMenu);
 const keyMap:Record<string,Direction>={ArrowUp:'up',KeyW:'up',ArrowDown:'down',KeyS:'down',ArrowLeft:'left',KeyA:'left',ArrowRight:'right',KeyD:'right'};
 const heldKeys=new Set<string>();
 const touchDirections=new Set<Direction>();
@@ -1195,7 +1262,12 @@ window.addEventListener('keydown',e=>{
   if(keyMap[e.code]){e.preventDefault();heldKeys.add(e.code);}
   if(e.code==='Space'){e.preventDefault();if(!e.repeat)placeBomb();}
   if(e.code==='KeyR'){e.preventDefault();if(!e.repeat)useAction();}
-  if(e.code==='KeyP'||e.code==='Escape'){e.preventDefault();if(!e.repeat)togglePause();}
+  if(e.code==='KeyP'||e.code==='Escape'){
+    e.preventDefault();if(e.repeat)return;
+    if(e.code==='Escape'&&!optionsMenu.classList.contains('hidden')){optionsMenu.classList.add('hidden');mainMenu.classList.remove('hidden');}
+    else if(e.code==='Escape'&&!intro.classList.contains('hidden'))showMainMenu();
+    else togglePause();
+  }
 });
 window.addEventListener('keyup',e=>{if(keyMap[e.code])heldKeys.delete(e.code);});
 window.addEventListener('blur',()=>{heldKeys.clear();resetDpad();});
@@ -1270,7 +1342,7 @@ function frame(now:number){
       burst(event.x,event.y,'#ffda8b',9);
       transientSprite(event.x,event.y,fxTextures.flare,'#ffc26d',{height:0.3,duration:0.18,opacity:0.55,startScale:0.23,endScale:0.8});
     }
-    if(event.type==='hit'){showToast('AU! EIN LEBEN VERLOREN');beep(170,0.28,'square',0.04);}
+    if(event.type==='hit'){showToast(game.map==='lobby'?'TREFFER! ÜBE WEITER':'AU! EIN LEBEN VERLOREN');beep(170,0.28,'square',0.04);}
     if(event.type==='shield'){burst(event.x,event.y,'#8ec8ff',16);shockwave(event.x,event.y,'#8ec8ff',0.75);showToast('SCHILD HAT DICH GESCHÜTZT!');beep(520,0.21,'triangle',0.04);}
     if(event.type==='upgrade'){
       const type=event.upgrade??'range';

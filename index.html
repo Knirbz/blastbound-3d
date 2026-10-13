@@ -17,15 +17,41 @@
         <section class="game-panel" aria-label="Spielbereich">
           <div class="hud">
             <div class="hud-stat"><span class="hud-label">LEBEN</span><span id="lives" class="hearts" aria-label="3 Leben">♥ ♥ ♥</span></div>
-            <div class="hud-stat"><span class="hud-label">GEGNER</span><span id="enemies" class="hud-value">03</span></div>
+            <div class="hud-stat"><span id="enemies-label" class="hud-label">GEGNER</span><span id="enemies" class="hud-value">03</span></div>
             <div class="hud-stat"><span class="hud-label">BOMBEN</span><span id="bombs" class="hud-value">1 / 1</span></div>
             <div class="hud-stat"><span class="hud-label">ZEIT</span><span id="timer" class="hud-value">00:00</span></div>
             <button id="pause-button" class="pause-button" type="button" aria-label="Spiel pausieren">Ⅱ <span>PAUSE</span></button>
           </div>
+          <div id="lobby-toolbar" class="lobby-toolbar hidden" aria-label="Übungs-Lobby">
+            <div><strong>ÜBUNGS-LOBBY</strong><span>Freies Spielen · Upgrades erscheinen automatisch</span></div>
+            <div class="lobby-actions"><button id="lobby-cpu" type="button">GEGEN CPU</button><button id="lobby-menu" type="button">MENÜ</button></div>
+          </div>
           <div id="stage" class="stage">
             <canvas id="game-canvas" aria-label="Blastbound 3D Spielfeld"></canvas>
             <div id="active-items" class="active-items hidden" aria-label="Aktive Power-ups"></div>
-            <div id="intro" class="overlay">
+            <div id="main-menu" class="overlay main-menu">
+              <div class="intro-card main-menu-card">
+                <p class="overline">WILLKOMMEN IN DER ARENA</p>
+                <h1>BLAST<span>BOUND</span></h1>
+                <p class="intro-copy">Wähle deinen Modus und leg los.</p>
+                <div class="main-menu-actions">
+                  <button id="menu-cpu" class="main-menu-choice" type="button"><strong>GEGEN CPU <span>→</span></strong><small>Figur, Schwierigkeit und Arena wählen</small></button>
+                  <button id="menu-lobby" class="main-menu-choice" type="button"><strong>LOBBY ERSTELLEN <span>→</span></strong><small>Lokales Testfeld: frei laufen, Bomben legen, Upgrades sammeln</small></button>
+                  <button id="menu-options" class="main-menu-choice" type="button"><strong>OPTIONEN <span>→</span></strong><small>Ton und Grafik einstellen</small></button>
+                </div>
+              </div>
+            </div>
+            <div id="options-menu" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="options-title">
+              <div class="intro-card options-card">
+                <p class="overline">SPIELEINSTELLUNGEN</p>
+                <h2 id="options-title">OPTIONEN</h2>
+                <button id="options-sound" class="option-row" type="button"><span>TON</span><strong>AUS</strong></button>
+                <button id="options-graphics" class="option-row" type="button"><span>GRAFIK</span><strong>HOCH</strong></button>
+                <p class="option-hint">Sparsam reduziert die Renderauflösung auf Mobilgeräten und schwächeren Rechnern.</p>
+                <button id="options-back" class="secondary-button" type="button">ZURÜCK ZUM MENÜ</button>
+              </div>
+            </div>
+            <div id="intro" class="overlay hidden">
               <div class="intro-card">
                 <div class="intro-icon">✦</div>
                 <p class="overline">WILLKOMMEN IN DER ARENA</p>
@@ -57,6 +83,7 @@
                   <p id="map-hint" class="map-hint" aria-live="polite"></p>
                 </fieldset>
                 <button id="start-button" class="primary-button" type="button">SPIEL STARTEN <span>→</span></button>
+                <button id="setup-back" class="secondary-button" type="button">ZURÜCK ZUM MENÜ</button>
                 <p class="quick-controls">WASD / Pfeiltasten bewegen · Leertaste Bombe · R Item-Aktion</p>
               </div>
             </div>
@@ -66,15 +93,15 @@
                 <h2 id="pause-title">KURZE PAUSE</h2>
                 <p id="pause-mode" class="pause-mode"></p>
                 <button id="resume-button" class="primary-button" type="button">WEITER SPIELEN <span>▶</span></button>
-                <button id="pause-menu-button" class="secondary-button" type="button">FIGUR / MODUS ÄNDERN</button>
+                <button id="pause-menu-button" class="secondary-button" type="button">HAUPTMENÜ</button>
               </div>
             </div>
             <div id="result" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="result-title">
-              <div class="intro-card result-card"><p id="result-kicker" class="overline"></p><h2 id="result-title"></h2><p id="result-copy" class="intro-copy"></p><button id="restart-button" class="primary-button" type="button">NOCH MAL SPIELEN <span>↻</span></button><button id="menu-button" class="secondary-button" type="button">FIGUR / MODUS ÄNDERN</button></div>
+              <div class="intro-card result-card"><p id="result-kicker" class="overline"></p><h2 id="result-title"></h2><p id="result-copy" class="intro-copy"></p><button id="restart-button" class="primary-button" type="button">NOCH MAL SPIELEN <span>↻</span></button><button id="menu-button" class="secondary-button" type="button">HAUPTMENÜ</button></div>
             </div>
             <div id="toast" class="toast hidden" role="status"></div>
           </div>
-          <div class="stage-footer"><span><i class="legend-dot player-dot"></i> DU</span><span><i class="legend-dot enemy-dot"></i> GEGNER</span><span><i class="legend-dot portal-dot"></i> PORTAL</span><span class="goal">ZERSTÖRE ALLE GEGNER → ERREICHE DAS PORTAL</span></div>
+          <div class="stage-footer"><span><i class="legend-dot player-dot"></i> DU</span><span id="enemy-legend"><i class="legend-dot enemy-dot"></i> GEGNER</span><span id="portal-legend"><i class="legend-dot portal-dot"></i> PORTAL</span><span id="stage-goal" class="goal">ZERSTÖRE ALLE GEGNER → ERREICHE DAS PORTAL</span></div>
         </section>
         <aside class="side-panel">
           <div class="panel-header"><span class="panel-line"></span><span>SO SPIELST DU</span></div>
