@@ -12,7 +12,7 @@ function allowedOrigin(origin) {
   if (!origin) return true;
   try {
     const url = new URL(origin);
-    return url.hostname === 'blastbound-3d.pages.dev' || url.hostname.endsWith('.blastbound-3d.pages.dev') || (['localhost', '127.0.0.1'].includes(url.hostname) && ['http:', 'https:'].includes(url.protocol));
+    return ['bomber-party.pages.dev', 'blastbound-3d.pages.dev'].some(hostname => url.hostname === hostname || url.hostname.endsWith(`.${hostname}`)) || (['localhost', '127.0.0.1'].includes(url.hostname) && ['http:', 'https:'].includes(url.protocol));
   } catch { return false; }
 }
 

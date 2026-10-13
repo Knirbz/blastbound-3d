@@ -49,7 +49,8 @@ npm run build
 ## Veröffentlichung
 
 - Quellcode: https://github.com/Knirbz/blastbound-3d
-- Spiel: https://blastbound-3d.pages.dev
+- Spiel: https://bomber-party.pages.dev
+- Bisherige Adresse (weiterhin erreichbar): https://blastbound-3d.pages.dev
 - Lobby-Dienst: https://blastbound-lobby.4r65rwknfp.workers.dev
 
 Die Seite wird auf Cloudflare Pages per Direct Upload veröffentlicht. Der Lobby-Dienst läuft als Cloudflare Worker mit Durable Objects. Das GitHub-Repository enthält den Quellcode; ein Push allein veröffentlicht noch keine neue Version. Nach Änderungen:
@@ -65,7 +66,7 @@ Für die Veröffentlichung aus PowerShell:
 ```powershell
 $env:CLOUDFLARE_ACCOUNT_ID = '8a7e885c48e5eaaa7f46e9a9480eefdd'
 npx wrangler deploy --config worker/wrangler.jsonc
-npx wrangler pages deploy dist --project-name blastbound-3d --branch main
+npx wrangler pages deploy dist --project-name bomber-party --branch main
 ```
 
 Dafür ist eine lokale Cloudflare-Anmeldung mit `npx wrangler login` erforderlich. Ein GitHub-Secret wird nicht benötigt. Die öffentliche Worker-Adresse steht in `.env.production`. `npm run dev` nutzt dieselbe Adresse aus `.env.development`. Ein getrennter lokaler Worker lässt sich grundsätzlich mit `npx wrangler dev --config worker/wrangler.jsonc --port 8787` starten; auf diesem Windows-Rechner antwortete dessen lokales Durable Object jedoch mit einem internen Wrangler-Fehler, während die veröffentlichte Version funktioniert. Den Online-Raum kann man mit `node tools/smoke-lobby.mjs https://blastbound-lobby.4r65rwknfp.workers.dev` prüfen. Node.js 22 ist in `.node-version` festgelegt.
