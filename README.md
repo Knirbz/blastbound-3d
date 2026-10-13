@@ -68,7 +68,7 @@ npx wrangler deploy --config worker/wrangler.jsonc
 npx wrangler pages deploy dist --project-name blastbound-3d --branch main
 ```
 
-Dafür ist eine lokale Cloudflare-Anmeldung mit `npx wrangler login` erforderlich. Ein GitHub-Secret wird nicht benötigt. Die öffentliche Worker-Adresse steht in `.env.production`. `npm run dev` nutzt dieselbe Adresse aus `.env.development`; für einen getrennten lokalen Worker kann dieser Wert auf `http://127.0.0.1:8787` gesetzt und `npx wrangler dev --config worker/wrangler.jsonc --port 8787` gestartet werden. Den Online-Raum kann man mit `node tools/smoke-lobby.mjs https://blastbound-lobby.4r65rwknfp.workers.dev` prüfen. Node.js 22 ist in `.node-version` festgelegt.
+Dafür ist eine lokale Cloudflare-Anmeldung mit `npx wrangler login` erforderlich. Ein GitHub-Secret wird nicht benötigt. Die öffentliche Worker-Adresse steht in `.env.production`. `npm run dev` nutzt dieselbe Adresse aus `.env.development`. Ein getrennter lokaler Worker lässt sich grundsätzlich mit `npx wrangler dev --config worker/wrangler.jsonc --port 8787` starten; auf diesem Windows-Rechner antwortete dessen lokales Durable Object jedoch mit einem internen Wrangler-Fehler, während die veröffentlichte Version funktioniert. Den Online-Raum kann man mit `node tools/smoke-lobby.mjs https://blastbound-lobby.4r65rwknfp.workers.dev` prüfen. Node.js 22 ist in `.node-version` festgelegt.
 
 ## 3D-Assets
 
