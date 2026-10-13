@@ -15,7 +15,7 @@ const difficultySettings: Record<Difficulty, { speed: number; focus: number; coo
 export type Tile = 0 | 1 | 2; // floor, stone, crate
 export type Direction = 'up' | 'down' | 'left' | 'right';
 export type Point = { x: number; y: number };
-export type Bomb = Point & { fuse: number; range: number; ownerPass: boolean; id: number; owner?: number; networkId?: string; remoteOwner?: string; remote?: boolean; pierce?: boolean; slime?: boolean; moving?: Direction; moveTimer?: number; beltTimer?: number; carried?: boolean; riftLocked?: boolean };
+export type Bomb = Point & { fuse: number; range: number; ownerPass: boolean; id: number; owner?: number; networkId?: string; remoteOwner?: string; remote?: boolean; pierce?: boolean; slime?: boolean; bouncy?: boolean; moving?: Direction; moveTimer?: number; beltTimer?: number; carried?: boolean; riftLocked?: boolean };
 export type CannonLane = Point & { direction: 'left' | 'right'; endX: number };
 export type CannonShot = Point & { id: number; direction: 'left' | 'right' };
 export type Enemy = Point & { id: number; targetX: number; targetY: number; moveTimer: number; bombCooldown: number; escapePath: Point[]; alive: boolean; facing: Direction };
@@ -208,6 +208,20 @@ export class Game {
     if(!bomb.moving){bomb.moving=dir;bomb.moveTimer=0.12;}
     return false;
   }
+  private facingBomb(){
+    const direction=dirs[this.player.facing];
+    return this.bombs.find(bomb=>{
+      if(bomb.carried)return false;
+      const forward=(bomb.x-this.player.x)*direction.x+(bomb.y-this.player.y)*direction.y;
+      const sideways=Math.abs((bomb.x-this.player.x)*direction.y-(bomb.y-this.player.y)*direction.x);
+      return forward>0.3&&forward<1.35&&sideways<0.52;
+    });
+  }
+  useBombButton(){
+    if(this.status!=='running')return false;
+    if(this.carriedBombId!==null||this.player.glove&&this.facingBomb())return this.useAction();
+    return this.placeBomb();
+  }
   useAction(){
     if(this.status!=='running')return false;
     if(this.carriedBombId!==null){
@@ -219,12 +233,12 @@ export class Game {
       let x=Math.round(this.player.x),y=Math.round(this.player.y);
       for(let i=0;i<3;i++){const nx=x+d.x,ny=y+d.y;if(this.tile(nx,ny)!==0||this.bombs.some(b=>b!==bomb&&!b.carried&&b.x===nx&&b.y===ny))break;x=nx;y=ny;}
       bomb.x=x;bomb.y=y;
-      if(bomb.slime){bomb.moving=this.player.facing;bomb.moveTimer=0.12;}
+      bomb.bouncy=true;bomb.moving=this.player.facing;bomb.moveTimer=0.12;
       this.tryWarpBomb(bomb);
       this.events.push({type:'bomb',x:bomb.x,y:bomb.y,bombId:bomb.id});return true;
     }
     if(this.player.glove){
-      const bomb=this.bombs.find(b=>!b.carried&&Math.hypot(b.x-this.player.x,b.y-this.player.y)<0.8);
+      const bomb=this.facingBomb();
       if(bomb){bomb.carried=true;bomb.moving=undefined;bomb.riftLocked=false;this.carriedBombId=bomb.id;return true;}
     }
     const remote=this.bombs.find(b=>b.owner===undefined&&b.remote);
@@ -269,7 +283,7 @@ export class Game {
       if(bomb.moveTimer>0)continue;
       const d=dirs[bomb.moving],nx=bomb.x+d.x,ny=bomb.y+d.y;
       if(this.tile(nx,ny)!==0||this.bombs.some(other=>other!==bomb&&!other.carried&&other.x===nx&&other.y===ny)){
-        if(bomb.slime){bomb.moving=directionList[(directionList.indexOf(bomb.moving)+2)%4];bomb.moveTimer=0.16;}
+        if(bomb.slime||bomb.bouncy){bomb.moving=directionList[(directionList.indexOf(bomb.moving)+2)%4];bomb.moveTimer=0.16;}
         else bomb.moving=undefined;
       }else{bomb.x=nx;bomb.y=ny;bomb.ownerPass=false;bomb.moveTimer=0.16;this.tryWarpBomb(bomb);}
     }

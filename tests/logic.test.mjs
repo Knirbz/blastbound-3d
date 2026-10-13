@@ -263,12 +263,41 @@ test('kick moves a bomb, glove carries and throws it, slime bounces',()=>{
   assert.equal(game.bombs[0].moving,'right');
   game.update(0.1);game.update(0.03);assert.equal(game.bombs[0].x,3);
   assert.equal(game.useAction(),true);assert.equal(game.bombs[0].moving,undefined);
-  game.player.x=3;game.player.y=1;
+  game.player.x=game.bombs[0].x-0.7;game.player.y=1;game.player.facing='right';
   assert.equal(game.useAction(),true);assert.equal(game.carriedBombId,100);
   game.player.facing='right';assert.equal(game.useAction(),true);
-  assert.equal(game.carriedBombId,null);assert.equal(game.bombs[0].moving,'right');
+  assert.equal(game.carriedBombId,null);assert.equal(game.bombs[0].moving,'right');assert.equal(game.bombs[0].bouncy,true);
   game.tiles[1][game.bombs[0].x+1]=1;game.update(0.1);game.update(0.03);
   assert.equal(game.bombs[0].moving,'left');
+});
+
+test('bomb button grabs only a bomb in front and throws ordinary bombs so they bounce',()=>{
+  const game=new Game(341);game.start();openArena(game);
+  collect(game,'glove');
+  game.player.x=3;game.player.y=3;game.player.facing='right';
+  game.bombs.push({x:4,y:3,id:200,range:1,fuse:2,ownerPass:false});
+  assert.equal(game.useBombButton(),true);
+  assert.equal(game.carriedBombId,200);
+  assert.equal(game.bombs.length,1);
+  game.tiles[3][7]=1;
+  assert.equal(game.useBombButton(),true);
+  assert.equal(game.carriedBombId,null);
+  assert.equal(game.bombs[0].bouncy,true);
+  assert.equal(game.bombs[0].moving,'right');
+  assert.equal(game.bombs[0].x,6);
+  game.update(0.1);game.update(0.03);
+  assert.equal(game.bombs[0].moving,'left');
+});
+
+test('looking away from a nearby bomb places a new one instead of grabbing it',()=>{
+  const game=new Game(342);game.start();openArena(game);
+  collect(game,'glove');
+  game.player.x=3;game.player.y=3;game.player.facing='up';game.player.capacity=2;
+  game.bombs.push({x:4,y:3,id:201,range:1,fuse:2,ownerPass:false});
+  assert.equal(game.useBombButton(),true);
+  assert.equal(game.carriedBombId,null);
+  assert.equal(game.bombs.length,2);
+  assert.deepEqual({x:game.bombs[1].x,y:game.bombs[1].y},{x:3,y:3});
 });
 
 test('holding a direction keeps a kicked bomb moving during frame updates',()=>{

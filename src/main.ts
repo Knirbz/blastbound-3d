@@ -1503,13 +1503,17 @@ function inputFacing():Direction{
   for(const code of Array.from(heldKeys).reverse())if(keyMap[code])return keyMap[code];
   return game.player.facing;
 }
-function placeBomb(){if(!outSent&&game.placeBomb()){beep(460,0.09,'triangle',0.025);updateHud();}}
+function pressBombButton(){
+  if(outSent)return;
+  game.player.facing=inputFacing();
+  if(game.useBombButton()){beep(460,0.09,'triangle',0.025);updateHud();}
+}
 function useAction(){if(!outSent&&game.useAction()){beep(680,0.08,'triangle',0.03);updateHud();}}
 window.addEventListener('keydown',e=>{
   if(e.code==='Escape'&&!lobbySetup.classList.contains('hidden')){e.preventDefault();showMainMenu();return;}
   if(e.target instanceof HTMLInputElement)return;
   if(keyMap[e.code]){e.preventDefault();heldKeys.add(e.code);}
-  if(e.code==='Space'){e.preventDefault();if(!e.repeat)placeBomb();}
+  if(e.code==='Space'){e.preventDefault();if(!e.repeat)pressBombButton();}
   if(e.code==='KeyR'){e.preventDefault();if(!e.repeat)useAction();}
   if(e.code==='KeyP'||e.code==='Escape'){
     e.preventDefault();if(e.repeat)return;
@@ -1528,12 +1532,12 @@ dpad.addEventListener('pointermove',e=>{if(e.pointerId===padPointer){e.preventDe
 for(const eventName of ['pointerup','pointercancel','lostpointercapture'])
   dpad.addEventListener(eventName,e=>{if((e as PointerEvent).pointerId===padPointer)resetDpad();});
 const touchBomb=document.querySelector<HTMLElement>('#touch-bomb')!;
-touchBomb.addEventListener('pointerdown',e=>{e.preventDefault();touchBomb.classList.add('active');placeBomb();touchBomb.setPointerCapture(e.pointerId);});
+touchBomb.addEventListener('pointerdown',e=>{e.preventDefault();touchBomb.classList.add('active');pressBombButton();touchBomb.setPointerCapture(e.pointerId);});
 for(const eventName of ['pointerup','pointercancel','lostpointercapture'])touchBomb.addEventListener(eventName,()=>touchBomb.classList.remove('active'));
-touchBomb.addEventListener('keydown',e=>{if(e.code==='Space'||e.code==='Enter'){e.preventDefault();e.stopPropagation();placeBomb();}});
+touchBomb.addEventListener('keydown',e=>{if(e.code==='Space'||e.code==='Enter'){e.preventDefault();e.stopPropagation();pressBombButton();}});
 stage.addEventListener('pointerdown',e=>{
   if(game.status==='running'&&window.matchMedia('(max-width:760px)').matches&&e.pointerType!=='mouse'&&e.clientX>=window.innerWidth/2&&(e.target===canvas||e.target===stage)){
-    e.preventDefault();placeBomb();
+    e.preventDefault();pressBombButton();
   }
 });
 const touchAction=document.querySelector<HTMLButtonElement>('#touch-action')!;
@@ -1567,7 +1571,7 @@ function frame(now:number){
   if(lobbyConnection&&(game.map==='lobby'||roomPhase==='match')&&!outSent){
     positionSendTimer-=dt;
     if(positionSendTimer<=0){
-      const payload={type:'position',x:game.player.x,y:game.player.y,facing:game.player.facing,moving:playerMoving,bombs:game.bombs.filter(bomb=>!bomb.remoteOwner&&bomb.owner===undefined).map(bomb=>({id:bomb.id,x:bomb.x,y:bomb.y}))};
+      const payload={type:'position',x:game.player.x,y:game.player.y,facing:game.player.facing,moving:playerMoving,bombs:game.bombs.filter(bomb=>!bomb.remoteOwner&&bomb.owner===undefined||bomb.carried||bomb.moving).map(bomb=>({networkId:bomb.networkId??`${bomb.owner!==undefined?'cpu':lobbySelfId}:${bomb.id}`,x:bomb.x,y:bomb.y}))};
       const serialized=JSON.stringify(payload);
       if(serialized!==lastPositionPayload||now-lastPositionSentAt>1000){lobbyConnection.send(payload);lastPositionPayload=serialized;lastPositionSentAt=now;}
       positionSendTimer=0.1;

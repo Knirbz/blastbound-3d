@@ -12,10 +12,10 @@ npm run dev
 ## Bedienung
 
 - **WASD** oder **Pfeiltasten**: bewegen
-- **Leertaste**: Bombe legen
-- **R**: Fernzünder, Bombe mit Handschuh aufnehmen/werfen oder gekickte Bombe stoppen
+- **Leertaste**: Bombe legen; mit Handschuh eine Bombe direkt vor dir aufheben und mit erneutem Druck werfen
+- **R**: Fernzünder, alternativ Bombe mit Handschuh aufnehmen/werfen oder gekickte Bombe stoppen
 - **P** oder **Escape**: Pause
-- Auf Smartphones: linken Daumen auf dem runden Pad bewegen; die rechte Hälfte der Spiel- und Steuerfläche antippen, um eine Bombe zu legen
+- Auf Smartphones: linken Daumen auf dem runden Pad bewegen; die rechte Hälfte der Spiel- und Steuerfläche antippen, um eine Bombe zu legen, aufzuheben oder zu werfen
 
 Im laufenden Spiel verhindern das Spielfeld und die Touchsteuerung Browser-Zoomgesten. Hauptmenü und Startauswahl füllen auf Mobilgeräten den Bildschirm.
 
@@ -35,7 +35,7 @@ Der **Burghof** bleibt die klassische Karte mit Kenney-Holzobjekten. Die **Werkh
 
 Besiege alle drei Gegner und sprenge das Portal frei. Danach betritt das Portal, um zu gewinnen. Die Grundreichweite beträgt ein Feld pro Richtung. Sieben eigenständige 3D-Bombenmodelle haben eigene Körperformen und Grundfarben: klassische dunkle Kugel, hoher blauer Feuerkraftbehälter, goldener Powerblock, rote Stachel-Superbombe, violetter Funkzünder, grüner Schleimkörper und pinke Gegnerbombe. Jede Bombe warnt kurz vor der Explosion mit Licht, Ring und leichtem Zittern. Normale Explosionen sind orange, stärkere türkis und Kettenreaktionen violett.
 
-Kisten und Fässer können die klassischen Items aus dem [Handbuch zu **Super Bomberman 2**](https://www.world-of-nintendo.com/manuals/super_nes/super_bomberman_2.shtml) enthalten: Extra-Feuerkraft, Extra-Bombe, Skates, Fernzünder, Bombenpass, Blockpass, Power-Handschuh, Bomben-Kick, Herz, maximale Feuerkraft, Power-Bombe, Superbombe, Schleimbombe und Schädel. Ein zusätzlicher Schild bleibt als Blastbound-Item erhalten. Der Handschuh nimmt eine nahe Bombe mit **R** auf und wirft sie mit erneutem **R** in Blickrichtung. Ein Kick schiebt Bomben feldweise; mit **R** hältst du sie an. Schleimbomben prallen beim Schieben oder Werfen von Hindernissen ab. Der Schädel verursacht für acht Sekunden einen zufälligen Nachteil; ein anderes Item hebt ihn auf. Die aktiven Fähigkeiten werden im Spiel eingeblendet. Auf Mobilgeräten erscheint für Spezialaktionen eine zweite Schaltfläche.
+Kisten und Fässer können die klassischen Items aus dem [Handbuch zu **Super Bomberman 2**](https://www.world-of-nintendo.com/manuals/super_nes/super_bomberman_2.shtml) enthalten: Extra-Feuerkraft, Extra-Bombe, Skates, Fernzünder, Bombenpass, Blockpass, Power-Handschuh, Bomben-Kick, Herz, maximale Feuerkraft, Power-Bombe, Superbombe, Schleimbombe und Schädel. Ein zusätzlicher Schild bleibt als Blastbound-Item erhalten. Mit Handschuh hebt die Leertaste eine Bombe direkt vor der Figur auf und wirft sie beim nächsten Druck in Blickrichtung; wer stattdessen wegschaut, legt eine neue Bombe. Geworfene Bomben prallen wie Gummibälle an Hindernissen ab. Ein Kick schiebt Bomben feldweise; mit **R** hältst du sie an. Schleimbomben prallen auch beim Kicken ab. Der Schädel verursacht für acht Sekunden einen zufälligen Nachteil; ein anderes Item hebt ihn auf. Die aktiven Fähigkeiten werden im Spiel eingeblendet. Auf Mobilgeräten erscheint für Spezialaktionen eine zweite Schaltfläche.
 
 Die Sammelobjekte zeigen die vorhandenen Bildsymbole nun deutlich größer als schwebende, zur Kamera ausgerichtete 3D-Marker. So bleiben sie auch auf kleinen Displays lesbar. Ihr Stil orientiert sich an den klassischen Items und an [Super Bomberman R 2](https://www.konami.com/games/bomberman/r2/eu/de/battle/).
 

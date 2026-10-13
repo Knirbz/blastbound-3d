@@ -191,11 +191,12 @@ export class LobbyRoom extends DurableObject {
       socket.serializeAttachment(player);
       this.broadcast({ type: 'player', player }, socket);
       let movedBomb = false;
-      if (Array.isArray(message.bombs)) for (const update of message.bombs.slice(0, 9)) {
-        if (![update.id, update.x, update.y].every(Number.isInteger) || update.x < 3 || update.x > 9 || update.y < 2 || update.y > 8) continue;
-        const bomb = room.bombs.find(item => item.networkId === `${player.id}:${update.id}`);
+      if (Array.isArray(message.bombs)) for (const update of message.bombs.slice(0, 18)) {
+        if (typeof update.networkId !== 'string' || !Number.isInteger(update.x) || !Number.isInteger(update.y) || update.x < (match ? 1 : 3) || update.x > (match ? 11 : 9) || update.y < (match ? 1 : 2) || update.y > (match ? 9 : 8)) continue;
+        const bomb = room.bombs.find(item => item.networkId === update.networkId);
+        if (bomb && bomb.ownerId !== player.id && bomb.moverId !== player.id && Math.hypot(player.x - bomb.x, player.y - bomb.y) > 1.5) continue;
         if (bomb && (bomb.x !== update.x || bomb.y !== update.y)) {
-          bomb.x = update.x; bomb.y = update.y; movedBomb = true;
+          bomb.x = update.x; bomb.y = update.y; bomb.moverId = player.id; movedBomb = true;
           this.broadcast({ type: 'bombMove', networkId: bomb.networkId, x: bomb.x, y: bomb.y }, socket);
         }
       }
