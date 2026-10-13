@@ -90,8 +90,10 @@ const foundryGlow=new THREE.MeshStandardMaterial({color:'#6fe5e8',emissive:'#25b
 const beltMat=mat('#1f2938',0.7,0.35),beltArrowMat=new THREE.MeshBasicMaterial({color:'#f6bd66'});
 const bombMat=mat('#34415d',0.26,0.25), bombCap=mat('#8b9bb4',0.34,0.55);
 const bombHighlight=mat('#7188aa',0.18,0.25),bombCore=mat('#f8fcff',0.2),bombFuseMat=mat('#e4c993',0.88);
-const bombAccent={normal:mat('#ffb45e',0.26,0.25),powered:mat('#6eeff2',0.26,0.25),enemy:mat('#f36b83',0.26,0.25),remote:mat('#8a8cff',0.26,0.25),pierce:mat('#ff6262',0.26,0.25),slime:mat('#81ed78',0.26,0.25)};
-const bombColors={normal:'#ffb45e',powered:'#6eeff2',enemy:'#f36b83',remote:'#8a8cff',pierce:'#ff6262',slime:'#81ed78'};
+type BombVariant='normal'|'boosted'|'power'|'super'|'remote'|'slime'|'enemy';
+const bombAccent:Record<BombVariant,THREE.MeshStandardMaterial>={normal:mat('#ffb45e',0.26,0.25),boosted:mat('#6eeff2',0.26,0.25),power:mat('#f6c364',0.26,0.25),super:mat('#ff6262',0.26,0.25),enemy:mat('#f36b83',0.26,0.25),remote:mat('#8a8cff',0.26,0.25),slime:mat('#81ed78',0.26,0.25)};
+const bombColors:Record<BombVariant,string>={normal:'#ffb45e',boosted:'#6eeff2',power:'#f6c364',super:'#ff6262',enemy:'#f36b83',remote:'#8a8cff',slime:'#81ed78'};
+const bombModels=new Map<BombVariant,THREE.Object3D>();
 const glow = new THREE.MeshStandardMaterial({color:'#ffda6a',emissive:'#ff8e2e',emissiveIntensity:3,roughness:0.25});
 const blastPalette:Record<BlastKind,{edge:string;core:string;spark:string}>={
   normal:{edge:'#ff6b2c',core:'#fff1b5',spark:'#ffd064'},
@@ -283,34 +285,48 @@ function character(primary:string,accent:string,evil=false){
   g.scale.setScalar(1.36);
   return g;
 }
-function bombVariant(bomb:Bomb){return bomb.owner!==undefined?'enemy':bomb.pierce?'pierce':bomb.slime?'slime':bomb.remote?'remote':bomb.range>2?'powered':'normal';}
+function bombVariant(bomb:Bomb):BombVariant{return bomb.owner!==undefined?'enemy':bomb.pierce?'super':bomb.slime?'slime':bomb.remote?'remote':bomb.range>=9?'power':bomb.range>2?'boosted':'normal';}
 function bombObject(bomb:Bomb){
   const g=new THREE.Group();
   const variant=bombVariant(bomb);
   const accent=bombAccent[variant],color=bombColors[variant];
-  const base=mesh(new THREE.CylinderGeometry(0.35,0.35,0.065,24),bombCap);base.position.y=0.045;g.add(base);
-  const body=mesh(new THREE.SphereGeometry(0.355,24,18),bombMat);body.position.y=0.39;g.add(body);
-  const highlight=mesh(new THREE.SphereGeometry(0.16,16,12),bombHighlight,false);highlight.scale.set(1,0.48,0.13);highlight.position.set(-0.13,0.55,0.31);g.add(highlight);
-  const lowerBand=mesh(new THREE.TorusGeometry(0.335,0.033,8,32),accent);lowerBand.rotation.x=Math.PI/2;lowerBand.position.y=0.29;g.add(lowerBand);
-  const upperBand=mesh(new THREE.TorusGeometry(0.335,0.018,8,32),bombCap);upperBand.rotation.x=Math.PI/2;upperBand.position.y=0.47;g.add(upperBand);
-  const face=mesh(new THREE.CircleGeometry(0.125,24),accent,false);face.position.set(0,0.39,0.352);g.add(face);
-  const core=mesh(new THREE.CircleGeometry(0.064,20),bombCore,false);core.position.set(0,0.39,0.355);g.add(core);
-  for(const x of [-0.19,0.19]){const rivet=mesh(new THREE.SphereGeometry(0.028,8,6),bombCap,false);rivet.position.set(x,0.39,0.306);g.add(rivet);}
-  const collar=mesh(new THREE.CylinderGeometry(0.155,0.2,0.13,16),bombCap);collar.position.y=0.72;g.add(collar);
-  const socket=mesh(new THREE.CylinderGeometry(0.09,0.105,0.04,16),accent);socket.position.y=0.81;g.add(socket);
-  const fuseCurve=new THREE.CatmullRomCurve3([new THREE.Vector3(0,0.82,0),new THREE.Vector3(0.03,0.9,0),new THREE.Vector3(0.11,0.97,0),new THREE.Vector3(0.15,1.06,0)]);
-  const fuse=mesh(new THREE.TubeGeometry(fuseCurve,14,0.039,7,false),bombFuseMat,false);g.add(fuse);
+  const art=bombModels.get(variant)?.clone(true)??null;
+  let face:THREE.Object3D;
+  let fuseCurve:THREE.Curve<THREE.Vector3>;
+  if(art){
+    g.add(art);art.updateMatrixWorld(true);
+    face=art.getObjectByName('indicator')??art;
+    const tip=art.getObjectByName('ember tip')?.getWorldPosition(new THREE.Vector3())??new THREE.Vector3(0.15,1.05,0);
+    fuseCurve=new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0,tip.y-0.22,0),new THREE.Vector3(0.03,tip.y-0.15,0),
+      new THREE.Vector3(tip.x*0.72,tip.y-0.07,0),tip,
+    ]);
+  }else{
+    // Technical fallback while standalone GLBs are loading.
+    const base=mesh(new THREE.CylinderGeometry(0.35,0.35,0.065,24),bombCap);base.position.y=0.045;g.add(base);
+    const body=mesh(new THREE.SphereGeometry(0.355,24,18),bombMat);body.position.y=0.39;g.add(body);
+    const highlight=mesh(new THREE.SphereGeometry(0.16,16,12),bombHighlight,false);highlight.scale.set(1,0.48,0.13);highlight.position.set(-0.13,0.55,0.31);g.add(highlight);
+    const lowerBand=mesh(new THREE.TorusGeometry(0.335,0.033,8,32),accent);lowerBand.rotation.x=Math.PI/2;lowerBand.position.y=0.29;g.add(lowerBand);
+    const upperBand=mesh(new THREE.TorusGeometry(0.335,0.018,8,32),bombCap);upperBand.rotation.x=Math.PI/2;upperBand.position.y=0.47;g.add(upperBand);
+    face=mesh(new THREE.CircleGeometry(0.125,24),accent,false);face.position.set(0,0.39,0.352);g.add(face);
+    const core=mesh(new THREE.CircleGeometry(0.064,20),bombCore,false);core.position.set(0,0.39,0.355);g.add(core);
+    for(const x of [-0.19,0.19]){const rivet=mesh(new THREE.SphereGeometry(0.028,8,6),bombCap,false);rivet.position.set(x,0.39,0.306);g.add(rivet);}
+    const collar=mesh(new THREE.CylinderGeometry(0.155,0.2,0.13,16),bombCap);collar.position.y=0.72;g.add(collar);
+    const socket=mesh(new THREE.CylinderGeometry(0.09,0.105,0.04,16),accent);socket.position.y=0.81;g.add(socket);
+    fuseCurve=new THREE.CatmullRomCurve3([new THREE.Vector3(0,0.82,0),new THREE.Vector3(0.03,0.9,0),new THREE.Vector3(0.11,0.97,0),new THREE.Vector3(0.15,1.06,0)]);
+    const fuse=mesh(new THREE.TubeGeometry(fuseCurve,14,0.039,7,false),bombFuseMat,false);g.add(fuse);
+  }
   const halo=mesh(new THREE.TorusGeometry(0.41,0.022,6,28),accent,false);halo.rotation.x=Math.PI/2;halo.position.y=0.06;g.add(halo);
   const warningRing=mesh(new THREE.RingGeometry(0.39,0.52,32),new THREE.MeshBasicMaterial({color,transparent:true,opacity:0,depthWrite:false,side:THREE.DoubleSide}),false);
   warningRing.rotation.x=-Math.PI/2;warningRing.position.y=0.025;g.add(warningRing);
   const fuseSpark=new THREE.Sprite(fxMaterial(fxTextures.flame,'#ffe5a0',0.65));
   fuseSpark.position.copy(fuseCurve.getPoint(1));fuseSpark.scale.set(0.19,0.23,1);g.add(fuseSpark);
   const point=new THREE.PointLight(color,0.25,1.6);point.position.y=0.87;g.add(point);
-  g.userData={face,halo,warningRing,fuseSpark,fuseCurve,point,variant};
+  g.userData={face,faceBaseScale:face.scale.clone(),art,halo,warningRing,fuseSpark,fuseCurve,point,variant};
   return g;
 }
 function disposeBombObject(object:THREE.Object3D){
-  disposeVisualGeometry(object);
+  for(const child of object.children)if(child!==object.userData.art)disposeVisualGeometry(child);
   ((object.userData.warningRing as THREE.Mesh).material as THREE.Material).dispose();
   (object.userData.fuseSpark as THREE.Sprite).material.dispose();
 }
@@ -550,7 +566,7 @@ type MarketProp='column'|'floor'|'shelf-boxes'|'shelf-bags'|'shelf-end'|'freezer
 const marketModels=new Map<MarketProp,THREE.Object3D>();
 type GraveyardProp='stone-wall-column'|'altar-stone'|'crypt-small'|'coffin'|'coffin-old'|'pumpkin'|'pumpkin-tall'|'grave-border'|'character-ghost'|'lantern-glass'|'floor-road';
 const graveyardModels=new Map<GraveyardProp,THREE.Object3D>();
-type PirateProp='barrel'|'cannon-ball'|'cannon'|'castle-wall'|'chest'|'crate-bottles'|'crate'|'flag-pirate'|'platform-planks'|'rocks-a'|'rocks-b'|'tower-base';
+type PirateProp='barrel'|'cannon-ball'|'cannon'|'castle-wall'|'chest'|'crate-bottles'|'crate'|'flag-pirate'|'floor-planks'|'rocks-a'|'rocks-b'|'tower-base';
 const pirateModels=new Map<PirateProp,THREE.Object3D>();
 const cannonShotObjects=new Map<number,THREE.Object3D>();
 function prepareTileModel(gltf:GLTF,width:number,height:number,fullFootprint=false){
@@ -574,6 +590,17 @@ function prepareTileModel(gltf:GLTF,width:number,height:number,fullFootprint=fal
     }
   });
   return model;
+}
+async function loadBombAssets(){
+  await Promise.all((Object.keys(bombColors) as BombVariant[]).map(async variant=>{
+    try{
+      const gltf=await assetLoader.loadAsync(`/assets/blastbound/bombs/${variant}.glb`);
+      const width=variant==='super'?0.97:variant==='power'?0.91:0.83;
+      bombModels.set(variant,prepareTileModel(gltf,width,1.08));
+    }catch(error){console.warn(`Blastbound ${variant} bomb asset unavailable`,error);}
+  }));
+  for(const obj of bombObjects.values()){props.remove(obj);disposeBombObject(obj);}
+  bombObjects.clear();
 }
 async function loadDungeonAssets(){
   const assets:[TileProp,string,number,number,boolean][]=[
@@ -676,16 +703,27 @@ async function loadPirateAssets(){
     ['barrel',0.83,0.78],['cannon-ball',0.44,0.44],['cannon',0.86,0.78],
     ['castle-wall',0.93,0.96],['chest',0.84,0.72],['crate-bottles',0.86,0.78],
     ['crate',0.87,0.76],['flag-pirate',0.32,0.62],
-    ['platform-planks',1,0.09],['rocks-a',0.92,0.9],['rocks-b',0.92,0.9],['tower-base',0.93,0.98],
+    ['floor-planks',1.02,0.09],['rocks-a',0.92,0.9],['rocks-b',0.92,0.9],['tower-base',0.93,0.98],
   ];
   await Promise.all(assets.map(async ([name,width,height])=>{
     try{
-      const gltf=await assetLoader.loadAsync(`/assets/kenney/pirate/${name}.glb`);
+      const path=name==='floor-planks'?'floor/planks':name;
+      const gltf=await assetLoader.loadAsync(`/assets/kenney/pirate/${path}.glb`);
       pirateModels.set(name,prepareTileModel(gltf,width,height));
     }catch(error){console.warn(`Kenney pirate ${name} asset unavailable`,error);}
   }));
-  const floor=pirateModels.get('platform-planks');
+  const floor=pirateModels.get('floor-planks');
   if(floor){
+    floor.traverse(child=>{
+      if(!(child instanceof THREE.Mesh))return;
+      const tint=(material:THREE.Material)=>{
+        if(!(material instanceof THREE.MeshStandardMaterial))return material;
+        const shaded=material.clone();shaded.color.multiply(new THREE.Color('#ae9680'));shaded.roughness=0.88;
+        return shaded;
+      };
+      child.material=Array.isArray(child.material)?child.material.map(tint):tint(child.material);
+      child.receiveShadow=true;
+    });
     pirateFloor.clear();
     for(let y=0;y<HEIGHT;y++)for(let x=0;x<WIDTH;x++){
       const cell=floor.clone(true);cell.position.set(x-6,-0.03,y-5);pirateFloor.add(cell);
@@ -905,7 +943,7 @@ function syncDynamic(){
       obj.position.y+=0.22;
     }else if(cart){props.remove(cart);cartObjects.delete(bomb.id);}
     const face=obj.userData.face as THREE.Mesh;
-    face.scale.setScalar(0.94+warning*0.18*Math.max(0,Math.sin(time*(10+warning*20))));
+    face.scale.copy(obj.userData.faceBaseScale as THREE.Vector3).multiplyScalar(0.94+warning*0.18*Math.max(0,Math.sin(time*(10+warning*20))));
     const halo=obj.userData.halo as THREE.Mesh;
     halo.visible=warning>0.02;
     halo.scale.setScalar(0.9+warning*0.25);
@@ -1249,4 +1287,4 @@ function frame(now:number){
   if(cameraJolt>0){camera.position.x+=Math.sin(now*0.071)*cameraJolt;camera.position.z+=Math.sin(now*0.096)*cameraJolt*0.6;}
   if(game.status==='running'){playerArt?.mixer.update(dt);for(const art of enemyArt.values())art.mixer.update(dt);}updateHud();renderer.render(scene,camera);
 }
-playerObject.position.copy(world(game.player));applyMapTheme();syncStatic();renderCharacterOptions();renderDifficultyOptions();renderMapOptions();loadKenneyAssets();void loadDungeonAssets();void loadMarketAssets();void loadGraveyardAssets();void loadPirateAssets();updateHud();requestAnimationFrame(frame);
+playerObject.position.copy(world(game.player));applyMapTheme();syncStatic();renderCharacterOptions();renderDifficultyOptions();renderMapOptions();loadKenneyAssets();void loadBombAssets();void loadDungeonAssets();void loadMarketAssets();void loadGraveyardAssets();void loadPirateAssets();updateHud();requestAnimationFrame(frame);
