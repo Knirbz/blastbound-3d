@@ -75,7 +75,7 @@ const rim = new THREE.DirectionalLight('#7789ff',0.8); rim.position.set(8,6,-9);
 const mat = (color:string, roughness=0.65, metalness=0) => new THREE.MeshStandardMaterial({color,roughness,metalness});
 const floorMats=['#4b627f','#506783','#48607d','#4d6580'].map(color=>mat(color,0.88));
 const foundryFloorMats=['#4c5361','#545c68','#444e5f','#59616c'].map(color=>mat(color,0.73,0.14));
-const marketFloorMats=['#d8ddd7','#e0e4dc','#d4dad4','#e6e7df'].map(color=>mat(color,0.82));
+const marketFloorMats=['#667b72','#70847b','#60746b','#75877d'].map(color=>mat(color,0.82));
 const floorEdge=mat('#263a58');
 const foundryEdge=mat('#343a4b',0.55,0.3);
 const marketEdge=mat('#677e78',0.67);
@@ -584,6 +584,16 @@ async function loadMarketAssets(){
   }));
   const floor=marketModels.get('floor');
   if(floor){
+    // Keep the Kenney tile's geometry and color pattern; only lower its surface value.
+    floor.traverse(child=>{
+      if(!(child instanceof THREE.Mesh))return;
+      const shade=(material:THREE.Material)=>{
+        if(!(material instanceof THREE.MeshStandardMaterial))return material;
+        const shaded=material.clone();shaded.color.multiply(new THREE.Color('#667c73'));
+        return shaded;
+      };
+      child.material=Array.isArray(child.material)?child.material.map(shade):shade(child.material);
+    });
     marketFloor.clear();
     for(let y=0;y<HEIGHT;y++)for(let x=0;x<WIDTH;x++){
       const cell=floor.clone(true);cell.position.set(x-6,-0.03,y-5);marketFloor.add(cell);
