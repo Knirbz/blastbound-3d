@@ -1,12 +1,19 @@
-import type { Direction, Upgrade } from './logic';
+import type { CannonShot, Direction, Enemy, MapType, Tile, Upgrade } from './logic';
 
-export type RoomPlayer = { id: string; x: number; y: number; facing: Direction; character: string; moving: boolean };
+export type MatchMap = Exclude<MapType, 'lobby'>;
+export type RoomSettings = { map: MatchMap; cpu: boolean };
+export type RoomPlayer = { id: string; x: number; y: number; facing: Direction; character: string; moving: boolean; ready: boolean; eliminated: boolean };
 export type RoomBomb = { networkId: string; ownerId: string; x: number; y: number; range: number; remote: boolean; pierce: boolean; slime: boolean; fuse: number };
 export type RoomMessage =
-  | { type: 'snapshot'; selfId: string; players: RoomPlayer[]; upgrades: Upgrade[]; bombs: RoomBomb[] }
+  | { type: 'snapshot'; selfId: string; players: RoomPlayer[]; upgrades: Upgrade[]; bombs: RoomBomb[]; hostId: string; settings: RoomSettings; phase: 'practice' | 'match'; seed?: number }
+  | { type: 'room'; players: RoomPlayer[]; hostId: string; settings: RoomSettings; phase: 'practice' | 'match'; upgrades: Upgrade[] }
+  | { type: 'start'; players: RoomPlayer[]; settings: RoomSettings; seed: number }
+  | { type: 'world'; tiles: Tile[][]; upgrades: Upgrade[]; enemies: Enemy[]; cannonShots: CannonShot[]; cannonWarning: { lane: number; remaining: number } | null }
+  | { type: 'ended'; winnerId: string | null }
   | { type: 'player'; player: RoomPlayer }
   | { type: 'left'; id: string }
   | { type: 'upgrades'; upgrades: Upgrade[] }
+  | { type: 'pickup'; x: number; y: number; playerId: string }
   | { type: 'bomb'; bomb: RoomBomb }
   | { type: 'bombMove'; networkId: string; x: number; y: number }
   | { type: 'detonate'; networkId: string };

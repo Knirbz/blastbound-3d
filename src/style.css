@@ -187,6 +187,20 @@
 .lobby-actions button:hover{background:#3e7280;border-color:#88e9d8}
 .lobby-actions button:first-child{background:#31766f;border-color:#72e5d2}
 .game-panel:has(.lobby-toolbar:not(.hidden)) #pause-button{visibility:hidden}
+.lobby-match-panel{position:relative;z-index:3;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:9px;padding:9px 16px;background:#1b3049;border-bottom:1px solid #4a6b7b}
+.asset-loading{position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:#111b30;color:#efffff;font:900 24px 'Barlow Condensed',Impact,sans-serif;letter-spacing:2px}
+.asset-loading span{color:#85e9d9;font-size:15px}
+.lobby-match-settings,.lobby-match-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.lobby-match-settings label{display:flex;align-items:center;gap:7px;color:#b9d9e6;font:800 12px 'Barlow Condensed',Impact,sans-serif;letter-spacing:.6px}
+.lobby-match-settings select{max-width:165px;padding:6px 8px;border:1px solid #688aa1;border-radius:7px;background:#253f59;color:#f5fbff;font:800 13px 'Barlow Condensed',Impact,sans-serif}
+.lobby-cpu-choice input{accent-color:#64e2ce;width:17px;height:17px}
+.lobby-ready-list{display:flex;gap:5px;flex-wrap:wrap;flex:1;min-width:130px}
+.lobby-ready-list span{padding:4px 7px;border:1px solid #6b718b;border-radius:20px;color:#e5eaf7;font:700 11px 'Barlow Condensed',Impact,sans-serif;white-space:nowrap}
+.lobby-ready-list .ready{border-color:#5de4c7;background:#245f61;color:#cffff1}
+.lobby-ready-list .not-ready{border-color:#a86b71;background:#5c3548;color:#ffd7db}
+.lobby-match-actions button{padding:7px 12px;border:1px solid #73dcca;border-radius:8px;background:#286b69;color:#effffb;font:900 14px 'Barlow Condensed',Impact,sans-serif;letter-spacing:.5px}
+.lobby-match-actions button:disabled{opacity:.45;cursor:not-allowed}
+#lobby-start{background:#e6ae5e;border-color:#f6d195;color:#293447}
 @media(max-width:760px){
   .main-menu,#options-menu,.lobby-setup{position:fixed;inset:0;z-index:20;padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));background:radial-gradient(circle at 50% 20%,#2b3d60,#10182c 72%);overflow-y:auto}
   .main-menu-card,.options-card,.lobby-setup-card{max-height:calc(100dvh - 24px);overflow-y:auto;padding:20px}
@@ -199,9 +213,14 @@
   .lobby-toolbar>div:first-child>span{display:none}
   .lobby-toolbar strong span{display:inline}
   .lobby-actions button{padding:5px 6px;font-size:11px}
-  .lobby-actions button:nth-child(2){display:none}
   .lobby-actions button:first-child{max-width:93px;white-space:normal;line-height:1.05}
-  .game-panel:has(.lobby-toolbar:not(.hidden)) .stage{height:clamp(240px,calc(100dvh - 336px),374px)}
+  .lobby-match-panel{padding:8px;gap:7px}
+  .lobby-match-settings{width:100%;justify-content:space-between}
+  .lobby-match-settings select{max-width:145px}
+  .lobby-ready-list{min-width:0}
+  .lobby-match-actions{width:100%}
+  .lobby-match-actions button{flex:1}
+  .game-panel:has(.lobby-toolbar:not(.hidden)) .stage{height:clamp(220px,calc(100dvh - 410px),355px)}
 }
 @media(max-height:520px){.main-menu-card{padding:12px 17px}.main-menu-card .intro-copy{display:none}.main-menu-choice{padding:8px 12px}.main-menu-actions{gap:5px}}
 @media(min-width:761px){

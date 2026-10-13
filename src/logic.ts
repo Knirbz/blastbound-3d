@@ -25,7 +25,7 @@ export type BlastKind = 'normal' | 'powered' | 'chain';
 export type BlastCell = Point & { distance: number; direction: Direction | null };
 export type Upgrade = Point & { type: UpgradeType };
 export type CurseType = 'slow' | 'fast' | 'autoBomb' | 'noBomb' | 'weak';
-export type GameEvent = { type: 'explode' | 'crate' | 'hit' | 'shield' | 'upgrade' | 'enemy' | 'bomb' | 'warp' | 'cannonFire' | 'cannonImpact'; x: number; y: number; bombId?: number; remoteOwner?: string; kind?: BlastKind; upgrade?: UpgradeType; cells?: BlastCell[]; source?: Point };
+export type GameEvent = { type: 'explode' | 'crate' | 'hit' | 'shield' | 'upgrade' | 'enemy' | 'bomb' | 'warp' | 'cannonFire' | 'cannonImpact'; x: number; y: number; bombId?: number; bot?: boolean; remoteOwner?: string; kind?: BlastKind; upgrade?: UpgradeType; cells?: BlastCell[]; source?: Point };
 
 const dirs: Record<Direction, Point> = {
   up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 },
@@ -59,6 +59,8 @@ export class Game {
   private cannonPlayerHit = false;
   private lobbySpawnTimer = 4.5;
   onlineLobby = false;
+  onlineMatch = false;
+  onlineMatchGuest = false;
   events: GameEvent[] = [];
   player = { x: 1, y: 1, lives: 3, shield: 0, invincible: 0, range: 1, capacity: 1, speed: 0, remote: false, bombPass: false, blockPass: false, glove: false, kick: false, powerBomb: false, pierce: false, slime: false, curse: 0, curseType: null as CurseType|null, facing: 'down' as Direction };
   carriedBombId: number | null = null;
@@ -96,6 +98,7 @@ export class Game {
     }));
     const safe = [[1,1],[2,1],[1,2],[11,1],[10,1],[11,2],[1,9],[2,9],[1,8],[11,9],[10,9],[11,8]];
     if(this.map!=='lobby')for (const [x,y] of safe) this.tiles[y][x] = 0;
+    if(this.onlineMatch)for(const [x,y] of [[1,5],[2,5],[1,4],[1,6],[11,5],[10,5],[11,4],[11,6],[5,1],[4,1],[5,2],[7,9],[6,9],[7,8],[6,5],[5,5],[7,5]])this.tiles[y][x]=0;
     this.conveyors.clear();
     if(this.map==='foundry')for(const [y,direction] of [[3,'right'],[7,'left']] as const)for(let x=3;x<=9;x++){
       this.conveyors.set(Game.key(x,y),direction);
@@ -272,8 +275,9 @@ export class Game {
     }
     const exploding = this.bombs.filter(b => !b.remote && (b.fuse -= dt) <= 0);
     for (const bomb of exploding) this.explode(bomb);
-    this.updateCannons(dt);
+    if(!this.onlineMatchGuest)this.updateCannons(dt);
     for (const enemy of this.enemies) {
+      if(this.onlineMatchGuest)continue;
       if (!enemy.alive) continue;
       if (this.difficulty === 'training') continue;
       enemy.bombCooldown=Math.max(0,enemy.bombCooldown-dt);
@@ -369,7 +373,7 @@ export class Game {
     const route=this.escapeRoute(enemy,profile.range);
     if(!route)return false;
     this.bombs.push({x,y,fuse:BOMB_FUSE,range:profile.range,ownerPass:false,id:++this.bombId,owner:enemy.id});
-    this.events.push({type:'bomb',x,y});
+    this.events.push({type:'bomb',x,y,bombId:this.bombId,bot:true});
     enemy.bombCooldown=profile.cooldown;
     enemy.escapePath=route;
     return true;
@@ -424,7 +428,7 @@ export class Game {
     if(this.carriedBombId===bomb.id)this.carriedBombId=null;
     const kind:BlastKind = chained ? 'chain' : bomb.range > 2 ? 'powered' : 'normal';
     const cells:BlastCell[]=[];
-    this.bombs.splice(index,1); this.events.push({type:'explode',x:bomb.x,y:bomb.y,bombId:bomb.id,remoteOwner:bomb.remoteOwner,kind,cells});
+    this.bombs.splice(index,1); this.events.push({type:'explode',x:bomb.x,y:bomb.y,bombId:bomb.id,bot:bomb.owner!==undefined,remoteOwner:bomb.remoteOwner,kind,cells});
     const ignite = (x:number,y:number,distance:number,direction:Direction|null) => {
       cells.push({x,y,distance,direction});
       const key=Game.key(x,y);
@@ -482,7 +486,7 @@ export class Game {
   }
   private checkHazards() {
     const fireCells = [...this.fire.keys()].map(key=>key.split(',').map(Number));
-    for (const enemy of this.enemies) if (enemy.alive && fireCells.some(([x,y])=>circleTouchesSquare(enemy.x,enemy.y,PLAYER_RADIUS,x,y,0.44))) {
+    for (const enemy of this.enemies) if (!this.onlineMatchGuest && enemy.alive && fireCells.some(([x,y])=>circleTouchesSquare(enemy.x,enemy.y,PLAYER_RADIUS,x,y,0.44))) {
       enemy.alive=false; this.events.push({type:'enemy',x:Math.round(enemy.x),y:Math.round(enemy.y)});
     }
     const inFire = fireCells.some(([x,y])=>circleTouchesSquare(this.player.x,this.player.y,PLAYER_RADIUS,x,y,0.44));
@@ -508,7 +512,7 @@ export class Game {
     }
   }
   private checkWin() {
-    if(this.map==='lobby')return;
+    if(this.map==='lobby'||this.onlineMatch)return;
     if (this.status==='running' && this.enemies.every(e=>!e.alive) && Math.hypot(this.player.x-this.portal.x,this.player.y-this.portal.y)<0.4 && this.tile(this.portal.x,this.portal.y)===0) this.status='won';
   }
   drainEvents() { return this.events.splice(0); }
