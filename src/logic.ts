@@ -5,7 +5,7 @@ export const ENEMY_SPEED = 1.45;
 export const BOMB_FUSE = 2.8;
 export const FIRE_DURATION = 0.56;
 export type Difficulty = 'training' | 'easy' | 'medium' | 'hard';
-export type MapType = 'courtyard' | 'foundry' | 'market';
+export type MapType = 'courtyard' | 'foundry' | 'market' | 'graveyard';
 const difficultySettings: Record<Difficulty, { speed: number; focus: number; cooldown: number; range: number }> = {
   training: { speed: 0, focus: 0, cooldown: Infinity, range: 0 },
   easy: { speed: 0.95, focus: 0.35, cooldown: 6, range: 1 },
@@ -15,7 +15,7 @@ const difficultySettings: Record<Difficulty, { speed: number; focus: number; coo
 export type Tile = 0 | 1 | 2; // floor, stone, crate
 export type Direction = 'up' | 'down' | 'left' | 'right';
 export type Point = { x: number; y: number };
-export type Bomb = Point & { fuse: number; range: number; ownerPass: boolean; id: number; owner?: number; remote?: boolean; pierce?: boolean; slime?: boolean; moving?: Direction; moveTimer?: number; beltTimer?: number; carried?: boolean };
+export type Bomb = Point & { fuse: number; range: number; ownerPass: boolean; id: number; owner?: number; remote?: boolean; pierce?: boolean; slime?: boolean; moving?: Direction; moveTimer?: number; beltTimer?: number; carried?: boolean; riftLocked?: boolean };
 export type Enemy = Point & { id: number; targetX: number; targetY: number; moveTimer: number; bombCooldown: number; escapePath: Point[]; alive: boolean; facing: Direction };
 export type UpgradeType = 'range' | 'capacity' | 'speed' | 'remote' | 'bombPass' | 'blockPass' | 'glove' | 'kick' | 'heart' | 'maxRange' | 'powerBomb' | 'pierce' | 'slime' | 'skull' | 'shield';
 export const CLASSIC_UPGRADES: UpgradeType[] = ['range','capacity','speed','remote','bombPass','blockPass','glove','kick','heart','maxRange','powerBomb','pierce','slime','skull'];
@@ -23,7 +23,7 @@ export type BlastKind = 'normal' | 'powered' | 'chain';
 export type BlastCell = Point & { distance: number; direction: Direction | null };
 export type Upgrade = Point & { type: UpgradeType };
 export type CurseType = 'slow' | 'fast' | 'autoBomb' | 'noBomb' | 'weak';
-export type GameEvent = { type: 'explode' | 'crate' | 'hit' | 'shield' | 'upgrade' | 'enemy' | 'bomb'; x: number; y: number; kind?: BlastKind; upgrade?: UpgradeType; cells?: BlastCell[] };
+export type GameEvent = { type: 'explode' | 'crate' | 'hit' | 'shield' | 'upgrade' | 'enemy' | 'bomb' | 'warp'; x: number; y: number; kind?: BlastKind; upgrade?: UpgradeType; cells?: BlastCell[]; source?: Point };
 
 const dirs: Record<Direction, Point> = {
   up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 },
@@ -47,6 +47,7 @@ export class Game {
   enemies: Enemy[] = [];
   upgrades: Upgrade[] = [];
   conveyors = new Map<string,Direction>();
+  ghostGraves: Point[] = [];
   events: GameEvent[] = [];
   player = { x: 1, y: 1, lives: 3, shield: 0, invincible: 0, range: 1, capacity: 1, speed: 0, remote: false, bombPass: false, blockPass: false, glove: false, kick: false, powerBomb: false, pierce: false, slime: false, curse: 0, curseType: null as CurseType|null, facing: 'down' as Direction };
   carriedBombId: number | null = null;
@@ -67,7 +68,8 @@ export class Game {
   tile(x: number, y: number): Tile { return this.inBounds(x, y) ? this.tiles[y][x] : 1; }
   reset(seed = Date.now()) {
     this.randomState = seed >>> 0;
-    this.portal=this.map==='foundry'?{x:9,y:5}:this.map==='market'?{x:9,y:5}:{x:9,y:7};
+    this.portal=this.map==='foundry'||this.map==='market'?{x:9,y:5}:this.map==='graveyard'?{x:7,y:5}:{x:9,y:7};
+    this.ghostGraves=this.map==='graveyard'?[{x:3,y:3},{x:9,y:7}]:[];
     this.tiles = Array.from({ length: HEIGHT }, (_, y) => Array.from({ length: WIDTH }, (_, x): Tile => {
       if (x === 0 || y === 0 || x === WIDTH - 1 || y === HEIGHT - 1) return 1;
       if(this.map==='foundry'){
@@ -75,7 +77,7 @@ export class Game {
         return this.rand()<0.59?2:0;
       }
       if(x%2===0&&y%2===0)return 1;
-      return this.rand()<(this.map==='market'?0.61:0.64)?2:0;
+      return this.rand()<(this.map==='market'?0.61:this.map==='graveyard'?0.62:0.64)?2:0;
     }));
     const safe = [[1,1],[2,1],[1,2],[11,1],[10,1],[11,2],[1,9],[2,9],[1,8],[11,9],[10,9],[11,8]];
     for (const [x,y] of safe) this.tiles[y][x] = 0;
@@ -91,6 +93,11 @@ export class Game {
     if(this.map==='market'){
       this.tiles[3][2]=1;
       this.tiles[7][10]=1;
+    }
+    if(this.map==='graveyard'){
+      for(const grave of this.ghostGraves)this.tiles[grave.y][grave.x]=0;
+      this.tiles[2][3]=0;
+      this.tiles[8][9]=0;
     }
     this.tiles[this.portal.y][this.portal.x] = 2;
     this.fire.clear(); this.fireKinds.clear(); this.bombs = []; this.upgrades = []; this.events = []; this.carriedBombId = null;this.autoBombTimer=0;
@@ -140,10 +147,24 @@ export class Game {
     if (this.bombs.some(b => b.x === x && b.y === y)) return false;
     if(this.player.curse>0&&this.player.curseType==='noBomb')return false;
     const range=this.player.curse>0&&this.player.curseType==='weak'?1:this.player.powerBomb?9:this.player.range;
-    this.bombs.push({x,y,fuse:BOMB_FUSE,range,ownerPass:true,id:++this.bombId,remote:this.player.remote,pierce:this.player.pierce,slime:this.player.slime});
+    const bomb:Bomb={x,y,fuse:BOMB_FUSE,range,ownerPass:true,id:++this.bombId,remote:this.player.remote,pierce:this.player.pierce,slime:this.player.slime};
+    this.bombs.push(bomb);
     this.player.powerBomb=false;
     this.events.push({type:'bomb',x,y});
+    this.tryWarpBomb(bomb);
     return true;
+  }
+  private tryWarpBomb(bomb:Bomb){
+    if(this.map!=='graveyard'||bomb.carried)return;
+    const entrance=this.ghostGraves.findIndex(grave=>grave.x===bomb.x&&grave.y===bomb.y);
+    if(entrance<0){bomb.riftLocked=false;return;}
+    if(bomb.riftLocked)return;
+    const destination=this.ghostGraves[1-entrance];
+    if(this.tile(destination.x,destination.y)!==0||this.bombs.some(other=>other!==bomb&&!other.carried&&other.x===destination.x&&other.y===destination.y))return;
+    const source={x:bomb.x,y:bomb.y};
+    bomb.x=destination.x;bomb.y=destination.y;bomb.ownerPass=false;
+    bomb.moving=undefined;bomb.moveTimer=undefined;bomb.beltTimer=undefined;bomb.riftLocked=true;
+    this.events.push({type:'warp',x:bomb.x,y:bomb.y,source});
   }
   private tryKick(x:number,y:number,dir:Direction){
     if(!this.player.kick || this.player.bombPass)return false;
@@ -166,11 +187,12 @@ export class Game {
       for(let i=0;i<3;i++){const nx=x+d.x,ny=y+d.y;if(this.tile(nx,ny)!==0||this.bombs.some(b=>b!==bomb&&!b.carried&&b.x===nx&&b.y===ny))break;x=nx;y=ny;}
       bomb.x=x;bomb.y=y;
       if(bomb.slime){bomb.moving=this.player.facing;bomb.moveTimer=0.12;}
-      this.events.push({type:'bomb',x,y});return true;
+      this.tryWarpBomb(bomb);
+      this.events.push({type:'bomb',x:bomb.x,y:bomb.y});return true;
     }
     if(this.player.glove){
       const bomb=this.bombs.find(b=>!b.carried&&Math.hypot(b.x-this.player.x,b.y-this.player.y)<0.8);
-      if(bomb){bomb.carried=true;bomb.moving=undefined;this.carriedBombId=bomb.id;return true;}
+      if(bomb){bomb.carried=true;bomb.moving=undefined;bomb.riftLocked=false;this.carriedBombId=bomb.id;return true;}
     }
     const remote=this.bombs.find(b=>b.owner===undefined&&b.remote);
     if(remote){this.explode(remote);return true;}
@@ -193,6 +215,7 @@ export class Game {
     for (const [key,ttl] of this.fire) { const next = ttl - dt; if (next <= 0) { this.fire.delete(key); this.fireKinds.delete(key); } else this.fire.set(key,next); }
     for(const bomb of this.bombs){
       if(bomb.carried){bomb.x=Math.round(this.player.x);bomb.y=Math.round(this.player.y);continue;}
+      this.tryWarpBomb(bomb);
       if(!bomb.moving){
         const direction=this.conveyors.get(Game.key(bomb.x,bomb.y));
         if(!direction)continue;
@@ -211,7 +234,7 @@ export class Game {
       if(this.tile(nx,ny)!==0||this.bombs.some(other=>other!==bomb&&!other.carried&&other.x===nx&&other.y===ny)){
         if(bomb.slime){bomb.moving=directionList[(directionList.indexOf(bomb.moving)+2)%4];bomb.moveTimer=0.16;}
         else bomb.moving=undefined;
-      }else{bomb.x=nx;bomb.y=ny;bomb.ownerPass=false;bomb.moveTimer=0.16;}
+      }else{bomb.x=nx;bomb.y=ny;bomb.ownerPass=false;bomb.moveTimer=0.16;this.tryWarpBomb(bomb);}
     }
     const exploding = this.bombs.filter(b => !b.remote && (b.fuse -= dt) <= 0);
     for (const bomb of exploding) this.explode(bomb);

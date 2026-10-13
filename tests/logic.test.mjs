@@ -343,3 +343,37 @@ test('market keeps Bomberman corridors and carries bombs through checkout lanes'
   assert.equal(game.bombs[0].x,5);
   assert.ok(game.bombs[0].fuse<BOMB_FUSE-0.5);
 });
+
+test('graveyard ghost graves warp bombs once while their fuses continue',()=>{
+  const game=new Game(43,'training','graveyard');
+  assert.equal(game.tiles.length,11);
+  assert.equal(game.tiles[0].length,13);
+  assert.deepEqual(game.ghostGraves,[{x:3,y:3},{x:9,y:7}]);
+  assert.equal(game.tile(3,3),0);
+  assert.equal(game.tile(9,7),0);
+  assert.equal(game.tile(2,2),1);
+  assert.equal(game.tile(game.portal.x,game.portal.y),2);
+  game.start();game.player.x=3;game.player.y=3;
+  assert.equal(game.placeBomb(),true);
+  assert.deepEqual({x:game.bombs[0].x,y:game.bombs[0].y},{x:9,y:7});
+  assert.equal(game.bombs[0].ownerPass,false);
+  assert.deepEqual(game.drainEvents().find(event=>event.type==='warp')?.source,{x:3,y:3});
+  game.update(0.1);
+  assert.deepEqual({x:game.bombs[0].x,y:game.bombs[0].y},{x:9,y:7});
+  assert.ok(game.bombs[0].fuse<BOMB_FUSE);
+});
+
+test('a blocked ghost grave delays transport, and sliding bombs also warp',()=>{
+  const game=new Game(44,'training','graveyard');game.start();
+  game.bombs.push({x:9,y:7,id:999,range:1,fuse:2,ownerPass:false,owner:999});
+  game.player.x=3;game.player.y=3;
+  assert.equal(game.placeBomb(),true);
+  assert.deepEqual({x:game.bombs[1].x,y:game.bombs[1].y},{x:3,y:3});
+  game.bombs.shift();game.update(0.02);
+  assert.deepEqual({x:game.bombs[0].x,y:game.bombs[0].y},{x:9,y:7});
+  game.bombs=[];game.tiles[3][2]=0;
+  game.bombs.push({x:2,y:3,id:1000,range:1,fuse:2,ownerPass:false,moving:'right',moveTimer:0.01});
+  game.update(0.02);
+  assert.deepEqual({x:game.bombs[0].x,y:game.bombs[0].y},{x:9,y:7});
+  assert.equal(game.bombs[0].moving,undefined);
+});

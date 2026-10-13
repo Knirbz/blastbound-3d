@@ -23,8 +23,8 @@ const difficultyDescriptions:Record<Difficulty,string>={
   hard:'Schnelle Bots mit stärkeren Bomben.',
 };
 const difficultyNames:Record<Difficulty,string>={training:'Training',easy:'Leicht',medium:'Mittel',hard:'Schwer'};
-const mapNames:Record<MapType,string>={courtyard:'Burghof',foundry:'Werkhalle',market:'Kassenchaos'};
-const mapDescriptions:Record<MapType,string>={courtyard:'Klassische Kisten und feste Mauern.',foundry:'Förderbänder bewegen gelegte Bomben.',market:'Regale freisprengen. Einkaufswagen fahren Bomben durch die Kassenbahnen.'};
+const mapNames:Record<MapType,string>={courtyard:'Burghof',foundry:'Werkhalle',market:'Kassenchaos',graveyard:'Spukfriedhof'};
+const mapDescriptions:Record<MapType,string>={courtyard:'Klassische Kisten und feste Mauern.',foundry:'Förderbänder bewegen gelegte Bomben.',market:'Regale freisprengen. Einkaufswagen fahren Bomben durch die Kassenbahnen.',graveyard:'Bomben auf Spukgräbern erscheinen am anderen Grab.'};
 const characters = [
   {id:'character-female-a',name:'Lina'},
   {id:'character-female-b',name:'Mira'},
@@ -76,9 +76,11 @@ const mat = (color:string, roughness=0.65, metalness=0) => new THREE.MeshStandar
 const floorMats=['#4b627f','#506783','#48607d','#4d6580'].map(color=>mat(color,0.88));
 const foundryFloorMats=['#4c5361','#545c68','#444e5f','#59616c'].map(color=>mat(color,0.73,0.14));
 const marketFloorMats=['#667b72','#70847b','#60746b','#75877d'].map(color=>mat(color,0.82));
+const graveyardFloorMats=['#525b63','#596269','#4c5660','#616970'].map(color=>mat(color,0.9));
 const floorEdge=mat('#263a58');
 const foundryEdge=mat('#343a4b',0.55,0.3);
 const marketEdge=mat('#677e78',0.67);
+const graveyardEdge=mat('#3a3d51',0.85);
 const stone=mat('#347c98',0.68), stoneTop=mat('#62c9ca',0.5), stoneTrim=mat('#20526f');
 const wood=mat('#bf794f',0.72), woodTop=mat('#e29a64',0.7), woodTrim=mat('#81563f',0.78), woodNail=mat('#e7c88a',0.3,0.55);
 const foundrySteel=mat('#303c4e',0.48,0.52),foundryTrim=mat('#a8aeb1',0.34,0.55),foundryGold=new THREE.MeshStandardMaterial({color:'#ff9d35',emissive:'#a8450a',emissiveIntensity:0.4,roughness:0.43,metalness:0.16});
@@ -162,6 +164,8 @@ const effects = new THREE.Group(); scene.add(effects);
 const floorBase=rounded(WIDTH+0.28,0.34,HEIGHT+0.28,0.14,floorEdge); floorBase.position.y=-0.28; floorBase.receiveShadow=true; board.add(floorBase);
 const floorCells:THREE.Mesh[]=[];
 const marketFloor=new THREE.Group();board.add(marketFloor);
+const graveyardFloor=new THREE.Group();board.add(graveyardFloor);
+const ghostGraveVisuals=new THREE.Group();board.add(ghostGraveVisuals);
 for(let y=0;y<HEIGHT;y++)for(let x=0;x<WIDTH;x++){
   const variation=(x*17+y*31+x*y*7)%floorMats.length;
   const cell=mesh(new THREE.BoxGeometry(0.995,0.07,0.995),floorMats[variation],false);
@@ -183,15 +187,18 @@ const conveyorVisuals=new THREE.Group();board.add(conveyorVisuals);
 function applyMapTheme(){
   const foundry=game.map==='foundry';
   const market=game.map==='market';
+  const graveyard=game.map==='graveyard';
   marketFloor.visible=market&&marketFloor.children.length>0;
+  graveyardFloor.visible=graveyard&&graveyardFloor.children.length>0;
+  ghostGraveVisuals.visible=graveyard;
   for(let i=0;i<floorCells.length;i++){
-    floorCells[i].material=(foundry?foundryFloorMats:market?marketFloorMats:floorMats)[i%4];
-    floorCells[i].visible=!marketFloor.visible;
+    floorCells[i].material=(foundry?foundryFloorMats:market?marketFloorMats:graveyard?graveyardFloorMats:floorMats)[i%4];
+    floorCells[i].visible=!marketFloor.visible&&!graveyardFloor.visible;
   }
-  floorBase.material=foundry?foundryEdge:market?marketEdge:floorEdge;
-  (rimBase.material as THREE.MeshStandardMaterial).color.set(foundry?'#242936':market?'#536e68':'#202d48');
-  scene.background=new THREE.Color(foundry?'#191b2a':market?'#1c2831':'#171e34');
-  if(scene.fog instanceof THREE.Fog)scene.fog.color.set(foundry?'#191b2a':market?'#1c2831':'#171e34');
+  floorBase.material=foundry?foundryEdge:market?marketEdge:graveyard?graveyardEdge:floorEdge;
+  (rimBase.material as THREE.MeshStandardMaterial).color.set(foundry?'#242936':market?'#536e68':graveyard?'#292b3d':'#202d48');
+  scene.background=new THREE.Color(foundry?'#191b2a':market?'#1c2831':graveyard?'#1a1a29':'#171e34');
+  if(scene.fog instanceof THREE.Fog)scene.fog.color.set(foundry?'#191b2a':market?'#1c2831':graveyard?'#1a1a29':'#171e34');
   for(const child of [...conveyorVisuals.children]){conveyorVisuals.remove(child);disposeVisualGeometry(child);}
   if(!foundry)return;
   const arrowShape=new THREE.Shape();arrowShape.moveTo(-0.16,-0.12);arrowShape.lineTo(0.02,-0.12);arrowShape.lineTo(0.02,-0.22);arrowShape.lineTo(0.23,0);arrowShape.lineTo(0.02,0.22);arrowShape.lineTo(0.02,0.12);arrowShape.lineTo(-0.16,0.12);arrowShape.closePath();
@@ -518,20 +525,24 @@ shieldRing.rotation.x=Math.PI/2;shieldRing.position.y=0.52;shieldAura.add(shield
 shieldAura.visible=false;actors.add(shieldAura);
 let playerArt:AnimatedArt|null=null;
 let enemyTemplate:GLTF|null=null;
+let graveyardEnemyTemplate:GLTF|null=null;
 let playerLoadRequest=0;
 const playerShadow=mesh(new THREE.CircleGeometry(0.44,20),new THREE.MeshBasicMaterial({color:'#121e39',transparent:true,opacity:0.3}),false);
 playerShadow.rotation.x=-Math.PI/2; playerShadow.position.y=0.004;actors.add(playerShadow);
 const key=(x:number,y:number)=>Game.key(x,y);
 function applyEnemyArt(group:THREE.Group,id:number){
-  if(!enemyTemplate)return;
+  const template=game.map==='graveyard'?(graveyardEnemyTemplate??enemyTemplate):enemyTemplate;
+  if(!template)return;
   const old=enemyArt.get(id);if(old)old.mixer.stopAllAction();
-  const art=makeAnimatedArt(enemyTemplate);group.clear();group.add(art.model);enemyArt.set(id,art);
+  const art=makeAnimatedArt(template);group.clear();group.add(art.model);enemyArt.set(id,art);
 }
 const assetLoader=new GLTFLoader();
 type TileProp='wall'|'wood-structure'|'barrel'|'chest';
 const tileModels=new Map<TileProp,THREE.Object3D>();
 type MarketProp='column'|'floor'|'shelf-boxes'|'shelf-bags'|'shelf-end'|'freezer'|'freezers-standing'|'cash-register'|'display-fruit'|'display-bread'|'shopping-cart'|'shopping-basket';
 const marketModels=new Map<MarketProp,THREE.Object3D>();
+type GraveyardProp='stone-wall-column'|'altar-stone'|'crypt-small'|'coffin'|'coffin-old'|'pumpkin'|'pumpkin-tall'|'grave-border'|'character-ghost'|'lantern-glass'|'floor-road';
+const graveyardModels=new Map<GraveyardProp,THREE.Object3D>();
 function prepareTileModel(gltf:GLTF,width:number,height:number,fullFootprint=false){
   const model=gltf.scene;
   const bounds=new THREE.Box3().setFromObject(model);
@@ -602,6 +613,54 @@ async function loadMarketAssets(){
   applyMapTheme();
   if(game.map==='market')rebuildStaticProps();
 }
+async function loadGraveyardAssets(){
+  const assets:[GraveyardProp,string,number,number][]=[
+    ['stone-wall-column','stone-wall-column',0.93,0.96],['altar-stone','altar-stone',0.91,0.9],
+    ['crypt-small','crypt-small',0.93,1.05],['coffin','coffin',0.86,0.72],
+    ['coffin-old','coffin-old',0.86,0.72],['pumpkin','pumpkin',0.83,0.7],
+    ['pumpkin-tall','pumpkin-tall',0.83,0.78],['grave-border','grave-border',0.9,0.13],
+    ['character-ghost','character-ghost',0.67,0.77],['lantern-glass','lantern-glass',0.3,0.38],
+    ['floor-road','floor/road',1,0.06],
+  ];
+  await Promise.all(assets.map(async ([name,path,width,height])=>{
+    try{
+      const gltf=await assetLoader.loadAsync(`/assets/kenney/graveyard/${path}.glb`);
+      graveyardModels.set(name,prepareTileModel(gltf,width,height));
+    }catch(error){console.warn(`Kenney graveyard ${name} asset unavailable`,error);}
+  }));
+  try{
+    graveyardEnemyTemplate=await assetLoader.loadAsync('/assets/kenney/graveyard/character-skeleton.glb');
+    if(game.map==='graveyard')for(const [id,obj] of enemyObjects)applyEnemyArt(obj,id);
+  }catch(error){console.warn('Kenney graveyard skeleton unavailable',error);}
+  const floor=graveyardModels.get('floor-road');
+  if(floor){
+    floor.traverse(child=>{
+      if(!(child instanceof THREE.Mesh))return;
+      const shade=(material:THREE.Material)=>{
+        if(!(material instanceof THREE.MeshStandardMaterial))return material;
+        const shaded=material.clone();shaded.color.multiply(new THREE.Color('#87948c'));
+        return shaded;
+      };
+      child.material=Array.isArray(child.material)?child.material.map(shade):shade(child.material);
+    });
+    graveyardFloor.clear();
+    for(let y=0;y<HEIGHT;y++)for(let x=0;x<WIDTH;x++){
+      const cell=floor.clone(true);cell.position.set(x-6,-0.03,y-5);graveyardFloor.add(cell);
+    }
+  }
+  ghostGraveVisuals.clear();
+  const border=graveyardModels.get('grave-border'),ghost=graveyardModels.get('character-ghost'),lantern=graveyardModels.get('lantern-glass');
+  if(border&&ghost)for(const grave of [{x:3,y:3},{x:9,y:7}]){
+    const marker=new THREE.Group();marker.position.copy(world(grave));
+    marker.add(border.clone(true));
+    const apparition=cloneSkeleton(ghost);apparition.position.y+=0.19;marker.add(apparition);
+    if(lantern){const lamp=lantern.clone(true);lamp.position.set(0.31,0.02,0.29);marker.add(lamp);}
+    const light=new THREE.PointLight('#a9f3ce',1.25,2.4);light.position.y=0.38;marker.add(light);
+    marker.userData={grave,apparition};ghostGraveVisuals.add(marker);
+  }
+  applyMapTheme();
+  if(game.map==='graveyard')rebuildStaticProps();
+}
 function rebuildStaticProps(){
   for(const obj of tileObjects.values())removeTileObject(obj);
   tileObjects.clear();syncStatic();
@@ -620,6 +679,22 @@ function tileModel(x:number,y:number,tile:1|2){
     const model=template.clone(true);
     if(tile===2)model.rotation.y=((x+y)%2)*Math.PI/2;
     return model;
+  }
+  if(game.map==='graveyard'){
+    const corner=(x===0||x===WIDTH-1)&&(y===0||y===HEIGHT-1);
+    const variant=(x*7+y*11+x*y*3)%7;
+    const name:GraveyardProp=tile===1?(corner?'crypt-small':(x+y)%9===0?'altar-stone':'stone-wall-column'):
+      x===game.portal.x&&y===game.portal.y?'coffin-old':
+      (['coffin','coffin-old','pumpkin','coffin','pumpkin-tall','coffin-old','coffin'] as const)[variant];
+    const template=graveyardModels.get(name);
+    if(!template)return tile===1?stoneBlock():crate();
+    const group=new THREE.Group(),model=template.clone(true);
+    model.rotation.y=((x+y)%2)*Math.PI/2;group.add(model);
+    if(tile===2&&x===game.portal.x&&y===game.portal.y){
+      const lamp=graveyardModels.get('lantern-glass')?.clone(true);
+      if(lamp){lamp.position.set(0,0.57,0);group.add(lamp);}
+    }
+    return group;
   }
   const name:TileProp=tile===1?'wall':x===game.portal.x&&y===game.portal.y?'chest':(x*7+y*11)%5===0?'barrel':'wood-structure';
   const template=tileModels.get(name);
@@ -689,7 +764,7 @@ function renderDifficultyOptions(){
 }
 function renderMapOptions(){
   const introCopy=document.querySelector<HTMLElement>('#intro-copy')!;
-  const updateCopy=()=>{introCopy.textContent=selectedMap==='foundry'?'Sprenge Energiecontainer. Auf den markierten Förderbändern fahren gelegte Bomben weiter.':selectedMap==='market'?'Räume die Regale frei. Einkaufswagen nehmen Bomben auf und fahren sie durch zwei Kassenbahnen.':'Sprenge Holzkisten und Fässer, locke Gegner in die Kreuzexplosion und erreiche das Portal.';};
+  const updateCopy=()=>{introCopy.textContent=selectedMap==='foundry'?'Sprenge Energiecontainer. Auf den markierten Förderbändern fahren gelegte Bomben weiter.':selectedMap==='market'?'Räume die Regale frei. Einkaufswagen nehmen Bomben auf und fahren sie durch zwei Kassenbahnen.':selectedMap==='graveyard'?'Sprenge Särge und Kürbisse. Bomben auf einem Spukgrab erscheinen am zweiten Grab – mit laufendem Zünder.':'Sprenge Holzkisten und Fässer, locke Gegner in die Kreuzexplosion und erreiche das Portal.';};
   for(const button of mapOptions.querySelectorAll<HTMLButtonElement>('[data-map]')){
     const map=button.dataset.map as MapType;
     button.setAttribute('aria-pressed',String(map===selectedMap));
@@ -838,6 +913,12 @@ function syncDynamic(){
   }
   for(const [id,obj] of upgradeObjects)if(!game.upgrades.some(u=>key(u.x,u.y)===id)){props.remove(obj);disposeVisualGeometry(obj);upgradeObjects.delete(id);}
   if(portalObjectRef){portalObjectRef.rotation.y+=0.012;portalObjectRef.position.y=0.04*Math.sin(performance.now()*0.003);}
+  for(const marker of ghostGraveVisuals.children){
+    const grave=marker.userData.grave as Point;
+    const apparition=marker.userData.apparition as THREE.Object3D;
+    apparition.visible=!game.bombs.some(b=>b.x===grave.x&&b.y===grave.y&&!b.carried);
+    apparition.position.y=0.19+0.06*Math.sin(performance.now()*0.003+grave.x);
+  }
   const t=performance.now()*0.002;
   playerObject.position.y=0.025*Math.sin(t*2);
 }
@@ -1058,6 +1139,11 @@ function frame(now:number){
     }
     if(event.type==='crate'){crateBurst(event.x,event.y);syncStatic();noiseHit(0.12,0.025,750);}
     if(event.type==='bomb')transientSprite(event.x,event.y,fxTextures.smoke,'#a7b1ba',{height:0.13,duration:0.2,opacity:0.25,startScale:0.12,endScale:0.58,additive:false});
+    if(event.type==='warp'){
+      if(event.source)transientSprite(event.source.x,event.source.y,fxTextures.flare,'#b9fff0',{height:0.56,duration:0.28,opacity:0.75,startScale:0.35,endScale:1.1});
+      transientSprite(event.x,event.y,fxTextures.flare,'#bdc7ff',{height:0.56,duration:0.32,opacity:0.8,startScale:0.25,endScale:1.3});
+      beep(720,0.2,'sine',0.035);
+    }
     if(event.type==='hit'){showToast('AU! EIN LEBEN VERLOREN');beep(170,0.28,'square',0.04);}
     if(event.type==='shield'){burst(event.x,event.y,'#8ec8ff',16);shockwave(event.x,event.y,'#8ec8ff',0.75);showToast('SCHILD HAT DICH GESCHÜTZT!');beep(520,0.21,'triangle',0.04);}
     if(event.type==='upgrade'){
@@ -1075,4 +1161,4 @@ function frame(now:number){
   if(cameraJolt>0){camera.position.x+=Math.sin(now*0.071)*cameraJolt;camera.position.z+=Math.sin(now*0.096)*cameraJolt*0.6;}
   if(game.status==='running'){playerArt?.mixer.update(dt);for(const art of enemyArt.values())art.mixer.update(dt);}updateHud();renderer.render(scene,camera);
 }
-playerObject.position.copy(world(game.player));applyMapTheme();syncStatic();renderCharacterOptions();renderDifficultyOptions();renderMapOptions();loadKenneyAssets();void loadDungeonAssets();void loadMarketAssets();updateHud();requestAnimationFrame(frame);
+playerObject.position.copy(world(game.player));applyMapTheme();syncStatic();renderCharacterOptions();renderDifficultyOptions();renderMapOptions();loadKenneyAssets();void loadDungeonAssets();void loadMarketAssets();void loadGraveyardAssets();updateHud();requestAnimationFrame(frame);
