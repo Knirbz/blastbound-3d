@@ -24,7 +24,7 @@
           </div>
           <div id="lobby-toolbar" class="lobby-toolbar hidden" aria-label="Online-Lobby">
             <div><strong>LOBBY <span id="lobby-room-code"></span></strong><span id="lobby-room-status">Verbunden · 1/8 Spieler</span></div>
-            <div class="lobby-actions"><button id="lobby-share" type="button">EINLADUNG TEILEN</button><button id="lobby-menu" type="button">MENÜ</button></div>
+            <div class="lobby-actions"><button id="lobby-panel-toggle" type="button" aria-expanded="false">MATCH</button><button id="lobby-share" type="button">EINLADUNG TEILEN</button><button id="lobby-menu" type="button">MENÜ</button></div>
           </div>
           <div id="lobby-match-panel" class="lobby-match-panel hidden" aria-label="Match vorbereiten">
             <div class="lobby-match-settings"><label for="lobby-map">ARENA<select id="lobby-map"><option value="courtyard">BURGHOF</option><option value="foundry">WERKHALLE</option><option value="market">KASSENCHAOS</option><option value="graveyard">SPUKFRIEDHOF</option><option value="pirate">KANONENBUCHT</option><option value="panorama">PANORAMA-HOF · 19 × 11</option></select></label><label class="lobby-cpu-choice"><input id="lobby-add-cpu" type="checkbox" /> 1 CPU DAZU</label></div>
@@ -34,6 +34,12 @@
           <div id="stage" class="stage">
             <canvas id="game-canvas" aria-label="Blastbound 3D Spielfeld"></canvas>
             <div id="active-items" class="active-items hidden" aria-label="Aktive Power-ups"></div>
+            <div class="mobile-controls" aria-label="Touch-Steuerung">
+              <div id="touch-dpad" class="dpad" role="group" aria-label="Bewegung: Daumen in die gewünschte Richtung ziehen">
+                <span class="dpad-center" aria-hidden="true"></span>
+              </div>
+              <div class="touch-actions"><div id="touch-bomb" class="touch-bomb" role="button" tabindex="0" aria-label="Bombe legen, heben oder werfen"><span>BOMBE</span><small>rechte Seite antippen</small></div><button id="touch-action" class="touch-action hidden" type="button" aria-label="Power-up-Aktion">AKTION</button></div>
+            </div>
             <div id="main-menu" class="overlay main-menu">
               <div class="intro-card main-menu-card">
                 <p class="overline">WILLKOMMEN IN DER ARENA</p>
@@ -128,12 +134,6 @@
           <p>Jede Bombe verändert das Labyrinth. Plane deinen Fluchtweg, bevor der Countdown abläuft.</p>
           <div class="control-list"><div class="control-row"><span>BOMBE LEGEN / HEBEN / WERFEN</span><kbd class="space-key">LEERTASTE</kbd></div><div class="control-row"><span>BEWEGEN</span><div class="key-group"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><small>oder</small><kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd></div></div><div class="control-row"><span>ITEM-AKTION</span><kbd>R</kbd></div><div class="control-row"><span>PAUSE</span><kbd>P</kbd></div></div>
           <div class="tip"><span class="tip-icon">✧</span><div><b>PRO-TIPP</b><p>Sprenge Holz und Fässer für klassische Power-ups. Mit R nutzt du Fernzünder, Handschuh oder Kick-Stopp.</p></div></div>
-          <div class="mobile-controls" aria-label="Touch-Steuerung">
-            <div id="touch-dpad" class="dpad" role="group" aria-label="Bewegung: Daumen in die gewünschte Richtung ziehen">
-              <span class="dpad-center" aria-hidden="true"></span>
-            </div>
-            <div class="touch-actions"><div id="touch-bomb" class="touch-bomb" role="button" tabindex="0" aria-label="Bombe legen, heben oder werfen"><span>BOMBE</span><small>rechte Seite antippen</small></div><button id="touch-action" class="touch-action hidden" type="button" aria-label="Power-up-Aktion">AKTION</button></div>
-          </div>
           <details class="item-guide"><summary>POWER-UPS ANSEHEN</summary><p>Feuerkraft +1 · seltene Feuerkraft +2 · Bombenzahl · Tempo · Fernzünder · Bombenpass · Blockpass · Handschuh · Kick · Herz · maximale Feuerkraft · Power-Bombe · Superbombe · Schleimbombe · Schädel · Schild</p></details>
         </aside>
       </main>
