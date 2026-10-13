@@ -15,7 +15,7 @@ const difficultySettings: Record<Difficulty, { speed: number; focus: number; coo
 export type Tile = 0 | 1 | 2; // floor, stone, crate
 export type Direction = 'up' | 'down' | 'left' | 'right';
 export type Point = { x: number; y: number };
-export type Bomb = Point & { fuse: number; range: number; ownerPass: boolean; id: number; owner?: number; remote?: boolean; pierce?: boolean; slime?: boolean; moving?: Direction; moveTimer?: number; beltTimer?: number; carried?: boolean; riftLocked?: boolean };
+export type Bomb = Point & { fuse: number; range: number; ownerPass: boolean; id: number; owner?: number; networkId?: string; remoteOwner?: string; remote?: boolean; pierce?: boolean; slime?: boolean; moving?: Direction; moveTimer?: number; beltTimer?: number; carried?: boolean; riftLocked?: boolean };
 export type CannonLane = Point & { direction: 'left' | 'right'; endX: number };
 export type CannonShot = Point & { id: number; direction: 'left' | 'right' };
 export type Enemy = Point & { id: number; targetX: number; targetY: number; moveTimer: number; bombCooldown: number; escapePath: Point[]; alive: boolean; facing: Direction };
@@ -25,7 +25,7 @@ export type BlastKind = 'normal' | 'powered' | 'chain';
 export type BlastCell = Point & { distance: number; direction: Direction | null };
 export type Upgrade = Point & { type: UpgradeType };
 export type CurseType = 'slow' | 'fast' | 'autoBomb' | 'noBomb' | 'weak';
-export type GameEvent = { type: 'explode' | 'crate' | 'hit' | 'shield' | 'upgrade' | 'enemy' | 'bomb' | 'warp' | 'cannonFire' | 'cannonImpact'; x: number; y: number; kind?: BlastKind; upgrade?: UpgradeType; cells?: BlastCell[]; source?: Point };
+export type GameEvent = { type: 'explode' | 'crate' | 'hit' | 'shield' | 'upgrade' | 'enemy' | 'bomb' | 'warp' | 'cannonFire' | 'cannonImpact'; x: number; y: number; bombId?: number; remoteOwner?: string; kind?: BlastKind; upgrade?: UpgradeType; cells?: BlastCell[]; source?: Point };
 
 const dirs: Record<Direction, Point> = {
   up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 },
@@ -58,6 +58,7 @@ export class Game {
   private cannonShotId = 0;
   private cannonPlayerHit = false;
   private lobbySpawnTimer = 4.5;
+  onlineLobby = false;
   events: GameEvent[] = [];
   player = { x: 1, y: 1, lives: 3, shield: 0, invincible: 0, range: 1, capacity: 1, speed: 0, remote: false, bombPass: false, blockPass: false, glove: false, kick: false, powerBomb: false, pierce: false, slime: false, curse: 0, curseType: null as CurseType|null, facing: 'down' as Direction };
   carriedBombId: number | null = null;
@@ -121,7 +122,7 @@ export class Game {
     this.fire.clear(); this.fireKinds.clear(); this.bombs = []; this.upgrades = []; this.events = []; this.carriedBombId = null;this.autoBombTimer=0;
     this.player = { x: this.map==='lobby'?6:1, y: this.map==='lobby'?5:1, lives: 3, shield: 0, invincible: 0, range: 1, capacity: 1, speed: 0, remote: false, bombPass: false, blockPass: false, glove: false, kick: false, powerBomb: false, pierce: false, slime: false, curse: 0, curseType: null, facing: 'down' };
     this.enemies = this.map==='lobby'?[]:[{x:11,y:1},{x:1,y:9},{x:11,y:9}].map(p => ({ ...p, targetX:p.x, targetY:p.y, id: ++this.enemyId, moveTimer: 0.45 + this.rand() * 0.2, bombCooldown: 1.8 + this.rand() * 1.4, escapePath: [], alive: true, facing: 'down' as Direction }));
-    if(this.map==='lobby')for(let i=0;i<3;i++)this.spawnLobbyUpgrade();
+    if(this.map==='lobby'&&!this.onlineLobby)for(let i=0;i<3;i++)this.spawnLobbyUpgrade();
     this.status = 'ready'; this.elapsed = 0;
   }
   private spawnLobbyUpgrade() {
@@ -179,7 +180,7 @@ export class Game {
     const bomb:Bomb={x,y,fuse:BOMB_FUSE,range,ownerPass:true,id:++this.bombId,remote:this.player.remote,pierce:this.player.pierce,slime:this.player.slime};
     this.bombs.push(bomb);
     this.player.powerBomb=false;
-    this.events.push({type:'bomb',x,y});
+    this.events.push({type:'bomb',x,y,bombId:bomb.id});
     this.tryWarpBomb(bomb);
     return true;
   }
@@ -217,7 +218,7 @@ export class Game {
       bomb.x=x;bomb.y=y;
       if(bomb.slime){bomb.moving=this.player.facing;bomb.moveTimer=0.12;}
       this.tryWarpBomb(bomb);
-      this.events.push({type:'bomb',x:bomb.x,y:bomb.y});return true;
+      this.events.push({type:'bomb',x:bomb.x,y:bomb.y,bombId:bomb.id});return true;
     }
     if(this.player.glove){
       const bomb=this.bombs.find(b=>!b.carried&&Math.hypot(b.x-this.player.x,b.y-this.player.y)<0.8);
@@ -232,7 +233,7 @@ export class Game {
   update(dt: number) {
     if (this.status !== 'running') return;
     dt = Math.min(dt, 0.1); this.elapsed += dt;
-    if(this.map==='lobby'){
+    if(this.map==='lobby'&&!this.onlineLobby){
       this.lobbySpawnTimer-=dt;
       if(this.lobbySpawnTimer<=0){this.spawnLobbyUpgrade();this.lobbySpawnTimer+=4.5;}
     }
@@ -423,7 +424,7 @@ export class Game {
     if(this.carriedBombId===bomb.id)this.carriedBombId=null;
     const kind:BlastKind = chained ? 'chain' : bomb.range > 2 ? 'powered' : 'normal';
     const cells:BlastCell[]=[];
-    this.bombs.splice(index,1); this.events.push({type:'explode',x:bomb.x,y:bomb.y,kind,cells});
+    this.bombs.splice(index,1); this.events.push({type:'explode',x:bomb.x,y:bomb.y,bombId:bomb.id,remoteOwner:bomb.remoteOwner,kind,cells});
     const ignite = (x:number,y:number,distance:number,direction:Direction|null) => {
       cells.push({x,y,distance,direction});
       const key=Game.key(x,y);
@@ -512,5 +513,5 @@ export class Game {
   }
   drainEvents() { return this.events.splice(0); }
   get aliveEnemies() { return this.enemies.filter(e=>e.alive).length; }
-  get playerBombCount() { return this.bombs.filter(b=>b.owner===undefined).length; }
+  get playerBombCount() { return this.bombs.filter(b=>b.owner===undefined&&!b.remoteOwner).length; }
 }

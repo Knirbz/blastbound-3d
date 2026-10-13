@@ -21,9 +21,9 @@ Im laufenden Spiel verhindern das Spielfeld und die Touchsteuerung Browser-Zoomg
 
 Halte eine Richtung gedrückt, um dich frei zwischen den Feldern zu bewegen. Zwei Richtungen gleichzeitig ergeben eine diagonale Bewegung. Wände, Kisten und Bomben blockieren die Figur direkt an ihrer Kante; Explosionen können sie auch treffen, wenn sie nur teilweise in einem betroffenen Feld steht. Bomben werden auf dem nächstgelegenen Feld platziert.
 
-Das Hauptmenü bietet **Gegen CPU**, **Lobby erstellen** und **Optionen**. Gegen CPU führt zur Auswahl einer von sechs Kenney-Figuren, des Bot-Modus **Training**, **Leicht**, **Mittel** oder **Schwer** und einer Karte. Die Auswahl wird im Browser gespeichert. Im Training stehen die Bots still und greifen nicht an. In den anderen Modi bewegen sie sich und legen eigene Bomben; sie blockieren damit keine Bombenplätze des Spielers. Schwere Bots suchen Wege um feste Blöcke herum. Über das Pausemenü oder nach einer Runde geht es zurück ins Hauptmenü.
+Das Hauptmenü bietet **Gegen CPU**, **Lobby erstellen**, **Lobby beitreten** und **Optionen**. Gegen CPU führt zur Auswahl einer von sechs Kenney-Figuren, des Bot-Modus **Training**, **Leicht**, **Mittel** oder **Schwer** und einer Karte. Die Auswahl wird im Browser gespeichert. Im Training stehen die Bots still und greifen nicht an. In den anderen Modi bewegen sie sich und legen eigene Bomben; sie blockieren damit keine Bombenplätze des Spielers. Schwere Bots suchen Wege um feste Blöcke herum. Über das Pausemenü oder nach einer Runde geht es zurück ins Hauptmenü.
 
-**Lobby erstellen** öffnet derzeit eine lokale Übungs-Lobby auf einem kompakten 7 × 7-Feld. Hier kannst du frei laufen, Bomben legen und zufällig erscheinende Upgrades sammeln. Drei Upgrades liegen zum Start bereit, danach erscheint alle 4,5 Sekunden ein weiteres, solange weniger als fünf auf dem Feld sind. Bombentreffer beenden die Übungsrunde nicht. Die Lobby enthält noch keine Online-Mitspieler oder Raumcodes. Im Menü **Optionen** lassen sich Ton und Renderauflösung einstellen.
+**Lobby erstellen** legt einen echten Online-Raum mit sechsstelligen Code an. Mit **Einladung teilen** verschickst du den Code und einen direkten Beitrittslink. **Lobby beitreten** akzeptiert beides; über den Link ist der Code vorausgefüllt. Bis zu acht Spieler können dieselbe kompakte 7 × 7-Arena betreten, einander mit den vorhandenen 3D-Figuren sehen, Bomben legen und zufällig erscheinende Upgrades sammeln. Drei Upgrades liegen zum Start bereit, danach erscheint etwa alle 4,5 Sekunden ein weiteres, solange weniger als fünf auf dem Feld sind. Bombentreffer beenden die freie Runde nicht. Ein Raum läuft nach 24 Stunden ab. Im Menü **Optionen** lassen sich Ton und Renderauflösung einstellen.
 
 Der **Burghof** bleibt die klassische Karte mit Kenney-Holzobjekten. Die **Werkhalle** verwendet dunkle, feste Metallblöcke und leuchtend orange zerstörbare Energiecontainer. Auf zwei markierten Förderbahnen fahren dort gelegte Bomben alle 0,55 Sekunden ein Feld weiter, bis sie am Ende oder vor einer anderen Bombe stehen bleiben. Der Zünder läuft währenddessen weiter.
 
@@ -50,8 +50,9 @@ npm run build
 
 - Quellcode: https://github.com/Knirbz/blastbound-3d
 - Spiel: https://blastbound-3d.pages.dev
+- Lobby-Dienst: https://blastbound-lobby.4r65rwknfp.workers.dev
 
-Die Seite wird auf Cloudflare Pages per Direct Upload veröffentlicht. Das GitHub-Repository enthält den Quellcode; ein Push allein veröffentlicht noch keine neue Version. Nach Änderungen:
+Die Seite wird auf Cloudflare Pages per Direct Upload veröffentlicht. Der Lobby-Dienst läuft als Cloudflare Worker mit Durable Objects. Das GitHub-Repository enthält den Quellcode; ein Push allein veröffentlicht noch keine neue Version. Nach Änderungen:
 
 ```sh
 npm ci
@@ -63,10 +64,11 @@ Für die Veröffentlichung aus PowerShell:
 
 ```powershell
 $env:CLOUDFLARE_ACCOUNT_ID = '8a7e885c48e5eaaa7f46e9a9480eefdd'
+npx wrangler deploy --config worker/wrangler.jsonc
 npx wrangler pages deploy dist --project-name blastbound-3d --branch main
 ```
 
-Dafür ist eine lokale Cloudflare-Anmeldung mit `npx wrangler login` erforderlich. Ein GitHub-Secret wird nicht benötigt. Node.js 22 ist in `.node-version` festgelegt.
+Dafür ist eine lokale Cloudflare-Anmeldung mit `npx wrangler login` erforderlich. Ein GitHub-Secret wird nicht benötigt. Die öffentliche Worker-Adresse steht in `.env.production`. `npm run dev` nutzt dieselbe Adresse aus `.env.development`; für einen getrennten lokalen Worker kann dieser Wert auf `http://127.0.0.1:8787` gesetzt und `npx wrangler dev --config worker/wrangler.jsonc --port 8787` gestartet werden. Den Online-Raum kann man mit `node tools/smoke-lobby.mjs https://blastbound-lobby.4r65rwknfp.workers.dev` prüfen. Node.js 22 ist in `.node-version` festgelegt.
 
 ## 3D-Assets
 

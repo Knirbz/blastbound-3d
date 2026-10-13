@@ -22,9 +22,9 @@
             <div class="hud-stat"><span class="hud-label">ZEIT</span><span id="timer" class="hud-value">00:00</span></div>
             <button id="pause-button" class="pause-button" type="button" aria-label="Spiel pausieren">Ⅱ <span>PAUSE</span></button>
           </div>
-          <div id="lobby-toolbar" class="lobby-toolbar hidden" aria-label="Übungs-Lobby">
-            <div><strong>ÜBUNGS-LOBBY</strong><span>Freies Spielen · Upgrades erscheinen automatisch</span></div>
-            <div class="lobby-actions"><button id="lobby-cpu" type="button">GEGEN CPU</button><button id="lobby-menu" type="button">MENÜ</button></div>
+          <div id="lobby-toolbar" class="lobby-toolbar hidden" aria-label="Online-Lobby">
+            <div><strong>LOBBY <span id="lobby-room-code"></span></strong><span id="lobby-room-status">Verbunden · 1/8 Spieler</span></div>
+            <div class="lobby-actions"><button id="lobby-share" type="button">EINLADUNG TEILEN</button><button id="lobby-cpu" type="button">GEGEN CPU</button><button id="lobby-menu" type="button">MENÜ</button></div>
           </div>
           <div id="stage" class="stage">
             <canvas id="game-canvas" aria-label="Blastbound 3D Spielfeld"></canvas>
@@ -36,9 +36,22 @@
                 <p class="intro-copy">Wähle deinen Modus und leg los.</p>
                 <div class="main-menu-actions">
                   <button id="menu-cpu" class="main-menu-choice" type="button"><strong>GEGEN CPU <span>→</span></strong><small>Figur, Schwierigkeit und Arena wählen</small></button>
-                  <button id="menu-lobby" class="main-menu-choice" type="button"><strong>LOBBY ERSTELLEN <span>→</span></strong><small>Lokales Testfeld: frei laufen, Bomben legen, Upgrades sammeln</small></button>
+                  <button id="menu-lobby" class="main-menu-choice" type="button"><strong>LOBBY ERSTELLEN <span>→</span></strong><small>Gemeinsame Arena mit Code zum Einladen</small></button>
+                  <button id="menu-join" class="main-menu-choice" type="button"><strong>LOBBY BEITRETEN <span>→</span></strong><small>Mit einem Lobby-Code bei Freunden mitspielen</small></button>
                   <button id="menu-options" class="main-menu-choice" type="button"><strong>OPTIONEN <span>→</span></strong><small>Ton und Grafik einstellen</small></button>
                 </div>
+              </div>
+            </div>
+            <div id="lobby-setup" class="overlay lobby-setup hidden" role="dialog" aria-modal="true" aria-labelledby="lobby-setup-title">
+              <div class="intro-card lobby-setup-card">
+                <p class="overline">ZUSAMMEN SPIELEN</p>
+                <h2 id="lobby-setup-title">LOBBY ERSTELLEN</h2>
+                <p class="intro-copy">Lauf frei durch die Arena, lege Bomben und sammle zufällige Upgrades.</p>
+                <fieldset class="character-picker"><legend>WÄHLE DEINE FIGUR</legend><div id="lobby-character-options" class="character-options"></div></fieldset>
+                <label id="lobby-code-row" class="lobby-code-row hidden" for="lobby-code-input">LOBBY-CODE<input id="lobby-code-input" type="text" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text" placeholder="Z. B. ABC234" /></label>
+                <p id="lobby-setup-error" class="lobby-setup-error hidden" role="alert"></p>
+                <button id="lobby-submit" class="primary-button" type="button">LOBBY ERSTELLEN <span>→</span></button>
+                <button id="lobby-setup-back" class="secondary-button" type="button">ZURÜCK ZUM MENÜ</button>
               </div>
             </div>
             <div id="options-menu" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="options-title">

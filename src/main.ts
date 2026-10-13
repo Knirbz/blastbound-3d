@@ -3,6 +3,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { Game, WIDTH, HEIGHT, BOMB_FUSE, FIRE_DURATION, type BlastKind, type BlastCell, type Bomb, type Difficulty, type Direction, type MapType, type Point, type UpgradeType } from './logic';
+import { createRoom, LobbyConnection, type RoomBomb, type RoomMessage, type RoomPlayer } from './lobby-network';
 import './style.css';
 
 const stage = document.querySelector<HTMLElement>('#stage')!;
@@ -10,6 +11,11 @@ const canvas = document.querySelector<HTMLCanvasElement>('#game-canvas')!;
 const mainMenu = document.querySelector<HTMLElement>('#main-menu')!;
 const optionsMenu = document.querySelector<HTMLElement>('#options-menu')!;
 const lobbyToolbar = document.querySelector<HTMLElement>('#lobby-toolbar')!;
+const lobbySetup = document.querySelector<HTMLElement>('#lobby-setup')!;
+const lobbyCharacterOptions = document.querySelector<HTMLElement>('#lobby-character-options')!;
+const lobbyCodeInput = document.querySelector<HTMLInputElement>('#lobby-code-input')!;
+const lobbySubmit = document.querySelector<HTMLButtonElement>('#lobby-submit')!;
+const lobbySetupError = document.querySelector<HTMLElement>('#lobby-setup-error')!;
 const intro = document.querySelector<HTMLElement>('#intro')!;
 const pauseMenu = document.querySelector<HTMLElement>('#pause-menu')!;
 const result = document.querySelector<HTMLElement>('#result')!;
@@ -570,6 +576,58 @@ function applyEnemyArt(group:THREE.Group,id:number){
   const art=makeAnimatedArt(template);group.clear();group.add(art.model);enemyArt.set(id,art);
 }
 const assetLoader=new GLTFLoader();
+const remotePlayers=new Map<string,RoomPlayer>();
+const remotePlayerObjects=new Map<string,THREE.Group>();
+const remotePlayerArt=new Map<string,AnimatedArt>();
+const remoteTemplates=new Map<string,Promise<GLTF>>();
+let lobbyConnection:LobbyConnection|null=null;
+let lobbyCode='';
+let lobbySelfId='';
+let remoteBombId=0;
+let positionSendTimer=0;
+function removeRemotePlayer(id:string){
+  remotePlayers.delete(id);
+  const object=remotePlayerObjects.get(id);
+  if(object){actors.remove(object);remotePlayerObjects.delete(id);}
+  remotePlayerArt.get(id)?.mixer.stopAllAction();remotePlayerArt.delete(id);
+}
+function clearRemotePlayers(){for(const id of [...remotePlayers.keys()])removeRemotePlayer(id);}
+function updateLobbyStatus(){
+  document.querySelector('#lobby-room-code')!.textContent=lobbyCode;
+  document.querySelector('#lobby-room-status')!.textContent=`Verbunden · ${remotePlayers.size+1}/8 Spieler · Upgrades erscheinen automatisch`;
+}
+function upsertRemotePlayer(player:RoomPlayer){
+  if(player.id===lobbySelfId)return;
+  remotePlayers.set(player.id,player);
+  if(remotePlayerObjects.has(player.id))return;
+  const object=new THREE.Group();actors.add(object);remotePlayerObjects.set(player.id,object);
+  let template=remoteTemplates.get(player.character);
+  if(!template){template=assetLoader.loadAsync(`/assets/kenney/characters/${player.character}.glb`);remoteTemplates.set(player.character,template);}
+  void template.then(gltf=>{
+    if(remotePlayerObjects.get(player.id)!==object)return;
+    const art=makeAnimatedArt(gltf);object.add(art.model);remotePlayerArt.set(player.id,art);
+  }).catch(error=>console.warn('Remote character asset unavailable',error));
+  updateLobbyStatus();
+}
+function addRemoteBomb(bomb:RoomBomb){
+  if(game.bombs.some(existing=>existing.networkId===bomb.networkId))return;
+  game.bombs.push({id:--remoteBombId,networkId:bomb.networkId,remoteOwner:bomb.ownerId,x:bomb.x,y:bomb.y,fuse:bomb.fuse,range:bomb.range,ownerPass:false,remote:bomb.remote,pierce:bomb.pierce,slime:bomb.slime});
+}
+function handleLobbyMessage(message:RoomMessage){
+  if(game.map!=='lobby'||!lobbyConnection)return;
+  if(message.type==='player'){upsertRemotePlayer(message.player);updateLobbyStatus();}
+  if(message.type==='left'){removeRemotePlayer(message.id);updateLobbyStatus();}
+  if(message.type==='upgrades')game.upgrades=message.upgrades;
+  if(message.type==='bomb')addRemoteBomb(message.bomb);
+  if(message.type==='bombMove'){
+    const bomb=game.bombs.find(existing=>existing.networkId===message.networkId);
+    if(bomb){bomb.x=message.x;bomb.y=message.y;}
+  }
+  if(message.type==='detonate'){
+    const bomb=game.bombs.find(existing=>existing.networkId===message.networkId);
+    if(bomb){bomb.remote=false;bomb.fuse=0;}
+  }
+}
 type TileProp='wall'|'wood-structure'|'barrel'|'chest';
 const tileModels=new Map<TileProp,THREE.Object3D>();
 type MarketProp='column'|'floor'|'shelf-boxes'|'shelf-bags'|'shelf-end'|'freezer'|'freezers-standing'|'cash-register'|'display-fruit'|'display-bread'|'shopping-cart'|'shopping-basket';
@@ -833,7 +891,7 @@ function loadPlayerArt(){
   });
 }
 function renderCharacterOptions(){
-  for(const character of characters){
+  for(const container of [characterOptions,lobbyCharacterOptions])for(const character of characters){
     const button=document.createElement('button');
     button.type='button';button.className='character-option';
     button.setAttribute('aria-label',`${character.name} auswählen`);
@@ -848,11 +906,11 @@ function renderCharacterOptions(){
       if(selectedCharacter===character.id)return;
       selectedCharacter=character.id;
       try {localStorage.setItem(characterStorageKey,selectedCharacter);} catch { /* Selection still works for this visit. */ }
-      for(const option of characterOptions.querySelectorAll<HTMLButtonElement>('button'))
+      for(const option of document.querySelectorAll<HTMLButtonElement>('#character-options button, #lobby-character-options button'))
         option.setAttribute('aria-pressed',String(option.dataset.character===selectedCharacter));
       loadPlayerArt();
     });
-    characterOptions.append(button);
+    container.append(button);
   }
 }
 function renderDifficultyOptions(){
@@ -927,6 +985,14 @@ function syncDynamic(){
     obj.rotation.y=facingYaw[enemy.facing];
     setAnimatedState(enemyArt.get(enemy.id)??null,game.status==='running'&&Math.hypot(enemy.targetX-enemy.x,enemy.targetY-enemy.y)>0.025);
     obj.position.copy(target);
+  }
+  for(const [id,player] of remotePlayers){
+    const obj=remotePlayerObjects.get(id);
+    if(!obj)continue;
+    const target=world(player);
+    obj.position.lerp(target,0.34);
+    obj.rotation.y=facingYaw[player.facing];
+    setAnimatedState(remotePlayerArt.get(id)??null,player.moving);
   }
   for(const bomb of game.bombs){
     let obj=bombObjects.get(bomb.id);
@@ -1167,29 +1233,81 @@ function showResult(){
   stage.classList.remove('game-active');pauseMenu.classList.add('hidden');result.classList.remove('hidden');beep(win?780:180,0.35,'triangle',0.08);
 }
 function prepareMap(map:MapType){
-  clearObjects();game.map=map;game.reset();game.setDifficulty(selectedDifficulty);
+  clearObjects();game.map=map;game.onlineLobby=map==='lobby'&&!!lobbyConnection;game.reset();game.setDifficulty(selectedDifficulty);
   playerObject.position.copy(world(game.player));
   camera.zoom=map==='lobby'?1.22:1;camera.updateProjectionMatrix();
   applyMapTheme();syncStatic();updateHud();
 }
+function leaveLobby(){
+  lobbyConnection?.close();lobbyConnection=null;lobbyCode='';lobbySelfId='';
+  clearRemotePlayers();
+  const url=new URL(location.href);
+  if(url.searchParams.has('lobby')){url.searchParams.delete('lobby');history.replaceState(null,'',url);}
+}
 function showMainMenu(){
+  leaveLobby();
   prepareMap(selectedMap);
   stage.classList.remove('game-active');
-  mainMenu.classList.remove('hidden');optionsMenu.classList.add('hidden');intro.classList.add('hidden');
+  mainMenu.classList.remove('hidden');optionsMenu.classList.add('hidden');intro.classList.add('hidden');lobbySetup.classList.add('hidden');
   pauseMenu.classList.add('hidden');result.classList.add('hidden');lobbyToolbar.classList.add('hidden');
 }
 function openCpuSetup(){
+  leaveLobby();
   prepareMap(selectedMap);
   stage.classList.remove('game-active');
-  mainMenu.classList.add('hidden');optionsMenu.classList.add('hidden');intro.classList.remove('hidden');
+  mainMenu.classList.add('hidden');optionsMenu.classList.add('hidden');intro.classList.remove('hidden');lobbySetup.classList.add('hidden');
   pauseMenu.classList.add('hidden');result.classList.add('hidden');lobbyToolbar.classList.add('hidden');
 }
-function createLobby(){
-  prepareMap('lobby');game.start();
-  stage.classList.add('game-active');
+let lobbySetupMode:'create'|'join'='create';
+function openLobbySetup(mode:'create'|'join',code=''){
+  lobbySetupMode=mode;
   mainMenu.classList.add('hidden');optionsMenu.classList.add('hidden');intro.classList.add('hidden');
+  lobbySetup.classList.remove('hidden');lobbySetupError.classList.add('hidden');lobbySetupError.textContent='';
+  document.querySelector('#lobby-setup-title')!.textContent=mode==='create'?'LOBBY ERSTELLEN':'LOBBY BEITRETEN';
+  document.querySelector('#lobby-code-row')!.classList.toggle('hidden',mode==='create');
+  lobbySubmit.innerHTML=mode==='create'?'LOBBY ERSTELLEN <span>→</span>':'LOBBY BEITRETEN <span>→</span>';
+  lobbyCodeInput.value=code;
+  if(mode==='join')lobbyCodeInput.focus();
+}
+async function enterLobby(code:string){
+  const {connection,snapshot}=await LobbyConnection.join(code,selectedCharacter);
+  lobbyConnection=connection;lobbyCode=code;lobbySelfId=snapshot.selfId;
+  connection.onMessage=handleLobbyMessage;
+  connection.onClose=()=>{
+    if(lobbyConnection!==connection)return;
+    showMainMenu();openLobbySetup('join',code);
+    lobbySetupError.textContent='Verbindung unterbrochen. Du kannst mit dem Code erneut beitreten.';
+    lobbySetupError.classList.remove('hidden');
+  };
+  prepareMap('lobby');game.start();
+  const self=snapshot.players.find(player=>player.id===snapshot.selfId);
+  if(self){game.player.x=self.x;game.player.y=self.y;game.player.facing=self.facing;}
+  game.upgrades=snapshot.upgrades;
+  for(const player of snapshot.players)upsertRemotePlayer(player);
+  for(const bomb of snapshot.bombs)if(bomb.ownerId!==lobbySelfId)addRemoteBomb(bomb);
+  stage.classList.add('game-active');
+  mainMenu.classList.add('hidden');optionsMenu.classList.add('hidden');intro.classList.add('hidden');lobbySetup.classList.add('hidden');
   pauseMenu.classList.add('hidden');result.classList.add('hidden');lobbyToolbar.classList.remove('hidden');
+  updateLobbyStatus();
+  const url=new URL(location.href);url.search='';url.searchParams.set('lobby',code);history.replaceState(null,'',url);
   updateHud();
+}
+async function submitLobby(){
+  if(lobbySubmit.disabled)return;
+  lobbySetupError.classList.add('hidden');
+  let code=lobbyCodeInput.value.toUpperCase().replace(/[^A-HJ-NP-Z2-9]/g,'');
+  if(lobbySetupMode==='join'&&code.length!==6){lobbySetupError.textContent='Bitte einen sechsstelligen Lobby-Code eingeben.';lobbySetupError.classList.remove('hidden');return;}
+  lobbySubmit.disabled=true;lobbySubmit.textContent='VERBINDE…';
+  try{
+    if(lobbySetupMode==='create')code=await createRoom();
+    await enterLobby(code);
+  }catch(error){
+    lobbySetupError.textContent=error instanceof Error?error.message:'Lobby konnte nicht geöffnet werden.';
+    lobbySetupError.classList.remove('hidden');
+  }finally{
+    lobbySubmit.disabled=false;
+    lobbySubmit.innerHTML=lobbySetupMode==='create'?'LOBBY ERSTELLEN <span>→</span>':'LOBBY BEITRETEN <span>→</span>';
+  }
 }
 function start(restart=false){
   if(restart)prepareMap(selectedMap);
@@ -1197,15 +1315,28 @@ function start(restart=false){
   pauseMenu.classList.add('hidden');result.classList.add('hidden');lobbyToolbar.classList.add('hidden');updateHud();
 }
 function togglePause(){
+  if(game.map==='lobby')return;
   if(game.status!=='running'&&game.status!=='paused')return;
   game.togglePause();
   const paused=game.status==='paused';
   pauseMenu.classList.toggle('hidden',!paused);
-  if(paused)document.querySelector('#pause-mode')!.textContent=game.map==='lobby'?'Übungs-Lobby · Freies Spielen':`${mapNames[game.map]} · Bots: ${difficultyNames[game.difficulty]}`;
+  if(paused)document.querySelector('#pause-mode')!.textContent=`${mapNames[game.map]} · Bots: ${difficultyNames[game.difficulty]}`;
   updateHud();
 }
 document.querySelector('#menu-cpu')!.addEventListener('click',openCpuSetup);
-document.querySelector('#menu-lobby')!.addEventListener('click',createLobby);
+document.querySelector('#menu-lobby')!.addEventListener('click',()=>openLobbySetup('create'));
+document.querySelector('#menu-join')!.addEventListener('click',()=>openLobbySetup('join'));
+document.querySelector('#lobby-submit')!.addEventListener('click',()=>void submitLobby());
+document.querySelector('#lobby-setup-back')!.addEventListener('click',showMainMenu);
+lobbyCodeInput.addEventListener('input',()=>{lobbyCodeInput.value=lobbyCodeInput.value.toUpperCase().replace(/[^A-HJ-NP-Z2-9]/g,'');});
+lobbyCodeInput.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();void submitLobby();}});
+document.querySelector('#lobby-share')!.addEventListener('click',async()=>{
+  if(!lobbyCode)return;
+  const url=new URL(location.href);url.search='';url.searchParams.set('lobby',lobbyCode);
+  if(navigator.share){try{await navigator.share({title:'Blastbound 3D Lobby',text:`Lobby-Code: ${lobbyCode}`,url:url.toString()});return;}catch(error){if((error as DOMException).name==='AbortError')return;}}
+  try{await navigator.clipboard.writeText(`Blastbound 3D Lobby-Code: ${lobbyCode}\n${url}`);showToast('EINLADUNG KOPIERT!');}
+  catch{showToast(`LOBBY-CODE: ${lobbyCode}`);}
+});
 document.querySelector('#menu-options')!.addEventListener('click',()=>{mainMenu.classList.add('hidden');optionsMenu.classList.remove('hidden');});
 document.querySelector('#options-back')!.addEventListener('click',()=>{optionsMenu.classList.add('hidden');mainMenu.classList.remove('hidden');});
 document.querySelector('#setup-back')!.addEventListener('click',showMainMenu);
@@ -1259,6 +1390,8 @@ function inputFacing():Direction{
 function placeBomb(){if(game.placeBomb()){beep(460,0.09,'triangle',0.025);updateHud();}}
 function useAction(){if(game.useAction()){beep(680,0.08,'triangle',0.03);updateHud();}}
 window.addEventListener('keydown',e=>{
+  if(e.code==='Escape'&&!lobbySetup.classList.contains('hidden')){e.preventDefault();showMainMenu();return;}
+  if(e.target instanceof HTMLInputElement)return;
   if(keyMap[e.code]){e.preventDefault();heldKeys.add(e.code);}
   if(e.code==='Space'){e.preventDefault();if(!e.repeat)placeBomb();}
   if(e.code==='KeyR'){e.preventDefault();if(!e.repeat)useAction();}
@@ -1308,9 +1441,19 @@ function frame(now:number){
     playerMoving=game.move(dx,dy,1/60,facing)||playerMoving;
     game.update(1/60);accumulator-=1/60;
   }
+  if(lobbyConnection&&game.map==='lobby'){
+    positionSendTimer-=dt;
+    if(positionSendTimer<=0){
+      lobbyConnection.send({type:'position',x:game.player.x,y:game.player.y,facing:game.player.facing,moving:playerMoving,bombs:game.bombs.filter(bomb=>!bomb.remoteOwner&&bomb.owner===undefined).map(bomb=>({id:bomb.id,x:bomb.x,y:bomb.y}))});
+      positionSendTimer=0.1;
+    }
+  }
   if(playerMoving&&footstepTimer===0){beep(260,0.025,'sine',0.008);footstepTimer=0.18;}
   for(const event of game.drainEvents()){
     if(event.type==='explode'){
+      if(lobbyConnection&&game.map==='lobby'&&!event.remoteOwner&&event.bombId!==undefined){
+        lobbyConnection.send({type:'detonate',id:event.bombId});
+      }
       const kind=event.kind??'normal',palette=blastPalette[kind];
       for(const cell of event.cells??[]){
         firePatterns.set(key(cell.x,cell.y),cell);
@@ -1327,7 +1470,13 @@ function frame(now:number){
       explosionSound(kind);
     }
     if(event.type==='crate'){crateBurst(event.x,event.y);syncStatic();noiseHit(0.12,0.025,750);}
-    if(event.type==='bomb')transientSprite(event.x,event.y,fxTextures.smoke,'#a7b1ba',{height:0.13,duration:0.2,opacity:0.25,startScale:0.12,endScale:0.58,additive:false});
+    if(event.type==='bomb'){
+      transientSprite(event.x,event.y,fxTextures.smoke,'#a7b1ba',{height:0.13,duration:0.2,opacity:0.25,startScale:0.12,endScale:0.58,additive:false});
+      if(lobbyConnection&&game.map==='lobby'&&event.bombId!==undefined){
+        const bomb=game.bombs.find(item=>item.id===event.bombId);
+        if(bomb)lobbyConnection.send({type:'bomb',id:bomb.id,x:bomb.x,y:bomb.y,range:bomb.range,remote:bomb.remote,pierce:bomb.pierce,slime:bomb.slime});
+      }
+    }
     if(event.type==='warp'){
       if(event.source)transientSprite(event.source.x,event.source.y,fxTextures.flare,'#b9fff0',{height:0.56,duration:0.28,opacity:0.75,startScale:0.35,endScale:1.1});
       transientSprite(event.x,event.y,fxTextures.flare,'#bdc7ff',{height:0.56,duration:0.32,opacity:0.8,startScale:0.25,endScale:1.3});
@@ -1345,6 +1494,7 @@ function frame(now:number){
     if(event.type==='hit'){showToast(game.map==='lobby'?'TREFFER! ÜBE WEITER':'AU! EIN LEBEN VERLOREN');beep(170,0.28,'square',0.04);}
     if(event.type==='shield'){burst(event.x,event.y,'#8ec8ff',16);shockwave(event.x,event.y,'#8ec8ff',0.75);showToast('SCHILD HAT DICH GESCHÜTZT!');beep(520,0.21,'triangle',0.04);}
     if(event.type==='upgrade'){
+      if(lobbyConnection&&game.map==='lobby')lobbyConnection.send({type:'pickup',x:event.x,y:event.y});
       const type=event.upgrade??'range';
       const messages:Record<UpgradeType,string>={range:'FLAMMENREICHWEITE +1',capacity:'EINE BOMBE MEHR',speed:'TEMPO +1',remote:'FERNZÜNDER AKTIV',bombPass:'DURCH BOMBEN LAUFEN',blockPass:'DURCH KISTEN LAUFEN',glove:'BOMBEN TRAGEN & WERFEN',kick:'BOMBEN KICKEN',heart:'EIN LEBEN ZURÜCK',maxRange:'MAXIMALE REICHWEITE',powerBomb:'NÄCHSTE BOMBE: MAXIMAL',pierce:'SUPERBOMBEN: DURCH KISTEN',slime:'SCHLEIMBOMBEN',skull:'FLUCH AKTIV',shield:'SCHUTZSCHILD AKTIV'};
       showToast(messages[type]);burst(event.x,event.y,upgradeColors[type],12);beep(880,0.24,'triangle',0.05);
@@ -1357,6 +1507,9 @@ function frame(now:number){
   cameraJolt=Math.max(0,cameraJolt-dt*0.8);
   camera.position.copy(cameraRest);
   if(cameraJolt>0){camera.position.x+=Math.sin(now*0.071)*cameraJolt;camera.position.z+=Math.sin(now*0.096)*cameraJolt*0.6;}
-  if(game.status==='running'){playerArt?.mixer.update(dt);for(const art of enemyArt.values())art.mixer.update(dt);}updateHud();renderer.render(scene,camera);
+  if(game.status==='running'){playerArt?.mixer.update(dt);for(const art of enemyArt.values())art.mixer.update(dt);for(const art of remotePlayerArt.values())art.mixer.update(dt);}updateHud();renderer.render(scene,camera);
 }
-playerObject.position.copy(world(game.player));applyMapTheme();syncStatic();renderCharacterOptions();renderDifficultyOptions();renderMapOptions();loadKenneyAssets();void loadBombAssets();void loadDungeonAssets();void loadMarketAssets();void loadGraveyardAssets();void loadPirateAssets();updateHud();requestAnimationFrame(frame);
+playerObject.position.copy(world(game.player));applyMapTheme();syncStatic();renderCharacterOptions();renderDifficultyOptions();renderMapOptions();loadKenneyAssets();void loadBombAssets();void loadDungeonAssets();void loadMarketAssets();void loadGraveyardAssets();void loadPirateAssets();updateHud();
+const inviteCode=new URL(location.href).searchParams.get('lobby')?.toUpperCase()??'';
+if(/^[A-HJ-NP-Z2-9]{6}$/.test(inviteCode))openLobbySetup('join',inviteCode);
+requestAnimationFrame(frame);

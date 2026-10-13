@@ -428,3 +428,15 @@ test('the compact lobby stays playable and keeps spawning random upgrades',()=>{
   assert.equal(game.player.lives,3);
   assert.equal(game.drainEvents().some(event=>event.type==='explode'),true);
 });
+
+test('online lobby leaves upgrade spawning to the room and remote bombs do not consume local capacity',()=>{
+  const game=new Game(52,'training','lobby');
+  game.onlineLobby=true;game.reset(52);game.start();
+  assert.equal(game.upgrades.length,0);
+  game.bombs.push({x:4,y:4,id:-1,networkId:'friend:1',remoteOwner:'friend',range:1,fuse:2,ownerPass:false});
+  assert.equal(game.playerBombCount,0);
+  assert.equal(game.placeBomb(),true);
+  assert.equal(game.playerBombCount,1);
+  for(let i=0;i<46;i++)game.update(0.1);
+  assert.equal(game.upgrades.length,0);
+});
