@@ -1333,9 +1333,18 @@ lobbyCodeInput.addEventListener('keydown',event=>{if(event.key==='Enter'){event.
 document.querySelector('#lobby-share')!.addEventListener('click',async()=>{
   if(!lobbyCode)return;
   const url=new URL(location.href);url.search='';url.searchParams.set('lobby',lobbyCode);
-  if(navigator.share){try{await navigator.share({title:'Blastbound 3D Lobby',text:`Lobby-Code: ${lobbyCode}`,url:url.toString()});return;}catch(error){if((error as DOMException).name==='AbortError')return;}}
-  try{await navigator.clipboard.writeText(`Blastbound 3D Lobby-Code: ${lobbyCode}\n${url}`);showToast('EINLADUNG KOPIERT!');}
-  catch{showToast(`LOBBY-CODE: ${lobbyCode}`);}
+  const invitation=`Blastbound 3D Lobby-Code: ${lobbyCode}\n${url}`;
+  try{await navigator.clipboard.writeText(invitation);showToast('EINLADUNG KOPIERT!');}
+  catch{
+    const input=document.createElement('textarea');
+    input.value=invitation;
+    input.setAttribute('readonly','');
+    input.style.position='fixed';input.style.opacity='0';input.style.pointerEvents='none';
+    document.body.append(input);input.select();
+    const copied=document.execCommand('copy');
+    input.remove();
+    showToast(copied?'EINLADUNG KOPIERT!':'KOPIEREN FEHLGESCHLAGEN');
+  }
 });
 document.querySelector('#menu-options')!.addEventListener('click',()=>{mainMenu.classList.add('hidden');optionsMenu.classList.remove('hidden');});
 document.querySelector('#options-back')!.addEventListener('click',()=>{optionsMenu.classList.add('hidden');mainMenu.classList.remove('hidden');});
