@@ -190,7 +190,7 @@ export class Game {
     if (this.bombs.some(b => b.x === x && b.y === y)) return false;
     if(this.player.curse>0&&this.player.curseType==='noBomb')return false;
     const range=this.player.curse>0&&this.player.curseType==='weak'?1:this.player.powerBomb?9:this.player.range;
-    const bomb:Bomb={x,y,fuse:BOMB_FUSE,range,ownerPass:true,id:++this.bombId,remote:this.player.remote,pierce:this.player.pierce,slime:this.player.slime};
+    const bomb:Bomb={x,y,fuse:BOMB_FUSE,range,ownerPass:true,id:++this.bombId,remote:this.player.remote,pierce:this.player.pierce,slime:this.player.slime,moving:this.player.slime?this.player.facing:undefined,moveTimer:this.player.slime?0.16:undefined};
     this.bombs.push(bomb);
     this.player.powerBomb=false;
     this.events.push({type:'bomb',x,y,bombId:bomb.id});
@@ -532,7 +532,7 @@ export class Game {
       this.player.lives--; this.player.invincible=1.45; this.events.push({type:'hit',x:Math.round(this.player.x),y:Math.round(this.player.y)});
       if(this.carriedBombId!==null){const carried=this.bombs.find(b=>b.id===this.carriedBombId);if(carried){carried.carried=false;carried.ownerPass=false;}this.carriedBombId=null;}
       for(const bomb of this.bombs)if(bomb.owner===undefined&&bomb.remote){bomb.remote=false;bomb.fuse=Math.min(bomb.fuse,1.2);}
-      this.player.speed=0;this.player.remote=false;this.player.bombPass=false;this.player.blockPass=false;this.player.glove=false;this.player.kick=false;this.player.pierce=false;this.player.slime=false;this.player.powerBomb=false;this.player.curse=0;this.player.curseType=null;
+      this.player.speed=0;this.player.remote=false;this.player.bombPass=false;this.player.blockPass=false;this.player.kick=false;this.player.pierce=false;this.player.powerBomb=false;this.player.curse=0;this.player.curseType=null;
       if (this.player.lives<=0) this.status='lost';
     }
   }

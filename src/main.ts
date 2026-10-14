@@ -1494,7 +1494,7 @@ function updateHud(){
   if(game.player.glove)labels.push('HANDSCHUH');
   if(game.player.kick)labels.push('KICK');
   if(game.player.pierce)labels.push('SUPERBOMBE');
-  if(game.player.slime)labels.push('SCHLEIMBOMBE');
+  if(game.player.slime)labels.push('SCHLEIMBOMBEN');
   if(game.player.powerBomb)labels.push('POWERBOMBE BEREIT');
   if(game.cannonWarning)labels.push(`KANONE LÄDT: ${game.cannonWarning.lane===0?'OBERE':'UNTERE'} BAHN`);
   if(game.player.curse>0)labels.push(`FLUCH: ${game.player.curseType==='slow'?'LANGSAM':game.player.curseType==='fast'?'ZU SCHNELL':game.player.curseType==='autoBomb'?'AUTO-BOMBEN':game.player.curseType==='noBomb'?'KEINE BOMBEN':'MINI-BOMBEN'}`);
@@ -1688,8 +1688,14 @@ function pressBombButton(){
   if(outSent)return;
   game.player.facing=inputFacing();
   if(game.useBombButton()){beep(460,0.09,'triangle',0.025);updateHud();}
+  else if(game.status==='running'&&game.playerBombCount>=game.player.capacity)
+    showToast(game.player.glove?'BOMBE AKTIV · NEHMEN ODER WARTEN':'BOMBENLIMIT · ZÜNDUNG ABWARTEN');
 }
-function useAction(){if(!outSent&&game.useAction()){beep(680,0.08,'triangle',0.03);updateHud();}}
+function useAction(){
+  if(outSent)return;
+  game.player.facing=inputFacing();
+  if(game.useAction()){beep(680,0.08,'triangle',0.03);updateHud();}
+}
 window.addEventListener('keydown',e=>{
   if(e.code==='Escape'&&!lobbySetup.classList.contains('hidden')){e.preventDefault();showMainMenu();return;}
   if(e.target instanceof HTMLInputElement)return;
@@ -1827,7 +1833,7 @@ function frame(now:number){
     if(event.type==='upgrade'){
       if(lobbyConnection)lobbyConnection.send({type:'pickup',x:event.x,y:event.y,playerX:event.playerX,playerY:event.playerY});
       const type=event.upgrade??'range';
-      const messages:Record<UpgradeType,string>={range:'FLAMMENREICHWEITE +1',range2:'FLAMMENREICHWEITE +2',capacity:'EINE BOMBE MEHR',speed:'TEMPO +1',remote:'FERNZÜNDER AKTIV',bombPass:'DURCH BOMBEN LAUFEN',blockPass:'DURCH KISTEN LAUFEN',glove:'BOMBEN TRAGEN & WERFEN',kick:'BOMBEN KICKEN',heart:'EIN LEBEN ZURÜCK',maxRange:'MAXIMALE REICHWEITE',powerBomb:'NÄCHSTE BOMBE: MAXIMAL',pierce:'SUPERBOMBEN: DURCH KISTEN',slime:'SCHLEIMBOMBEN',skull:'FLUCH AKTIV',shield:'SCHUTZSCHILD AKTIV'};
+      const messages:Record<UpgradeType,string>={range:'FLAMMENREICHWEITE +1',range2:'FLAMMENREICHWEITE +2',capacity:'EINE BOMBE MEHR',speed:'TEMPO +1',remote:'FERNZÜNDER AKTIV',bombPass:'DURCH BOMBEN LAUFEN',blockPass:'DURCH KISTEN LAUFEN',glove:'HANDSCHUH BIS RUNDENENDE',kick:'BOMBEN KICKEN',heart:'EIN LEBEN ZURÜCK',maxRange:'MAXIMALE REICHWEITE',powerBomb:'NÄCHSTE BOMBE: MAXIMAL',pierce:'SUPERBOMBEN: DURCH KISTEN',slime:'SCHLEIMBOMBEN · DAUERHAFT',skull:'FLUCH AKTIV',shield:'SCHUTZSCHILD AKTIV'};
       showToast(messages[type]);burst(event.x,event.y,upgradeColors[type],12);beep(880,0.24,'triangle',0.05);
     }
     if(event.type==='enemy'){burst(event.x,event.y,'#eab0ff',12);showToast('GEGNER AUSGESCHALTET!');beep(660,0.14,'triangle',0.04);}

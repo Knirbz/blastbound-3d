@@ -322,6 +322,40 @@ test('bomb button grabs only a bomb in front and throws ordinary bombs so they b
   assert.equal(game.bombs[0].moving,'left');
 });
 
+test('the glove can pick up and throw more than one bomb in a round',()=>{
+  const game=new Game(343);game.start();openArena(game);
+  collect(game,'glove');
+  for(const id of [210,211]){
+    game.player.x=3;game.player.y=3;game.player.facing='right';
+    game.bombs.push({x:4,y:3,id,range:1,fuse:2,ownerPass:false});
+    assert.equal(game.useBombButton(),true);
+    assert.equal(game.carriedBombId,id);
+    assert.equal(game.useBombButton(),true);
+    assert.equal(game.carriedBombId,null);
+    assert.equal(game.player.glove,true);
+    game.bombs=[];
+  }
+});
+
+test('glove and slime last for the round, and placed slime bombs bounce',()=>{
+  const game=new Game(344);game.start();openArena(game);
+  collect(game,'glove');collect(game,'slime');
+  game.player.x=1;game.player.y=1;game.player.facing='right';
+  game.fire.set('1,1',0.5);game.update(0.01);
+  assert.equal(game.player.lives,2);
+  assert.equal(game.player.glove,true);
+  assert.equal(game.player.slime,true);
+  game.fire.clear();game.tiles[1][2]=1;
+  assert.equal(game.placeBomb(),true);
+  assert.equal(game.bombs[0].slime,true);
+  assert.equal(game.bombs[0].moving,'right');
+  game.update(0.1);game.update(0.07);
+  assert.equal(game.bombs[0].moving,'left');
+  game.bombs=[];
+  assert.equal(game.placeBomb(),true);
+  assert.equal(game.bombs[0].slime,true);
+});
+
 test('looking away from a nearby bomb places a new one instead of grabbing it',()=>{
   const game=new Game(342);game.start();openArena(game);
   collect(game,'glove');
