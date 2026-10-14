@@ -9,6 +9,16 @@ const matchMaps = new Set(['courtyard', 'foundry', 'market', 'graveyard', 'pirat
 const validCharacter = /^character-(?:female|male)-[abc]$/;
 const response = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', ...headers } });
 
+function validPickup(player, message) {
+  if (![message.x, message.y].every(Number.isInteger)) return false;
+  const x = Number.isFinite(message.playerX) ? message.playerX : player.x;
+  const y = Number.isFinite(message.playerY) ? message.playerY : player.y;
+  if (Math.hypot(x - player.x, y - player.y) > 1.1) return false;
+  const dx = Math.max(Math.abs(x - message.x) - 0.5, 0);
+  const dy = Math.max(Math.abs(y - message.y) - 0.5, 0);
+  return dx * dx + dy * dy < 0.29 * 0.29;
+}
+
 function allowedOrigin(origin) {
   if (!origin) return true;
   try {
@@ -211,12 +221,12 @@ export class LobbyRoom extends DurableObject {
       return;
     }
     if (message.type === 'pickup' && room.phase === 'match') {
-      if (player.eliminated || ![message.x, message.y].every(Number.isInteger) || Math.hypot(player.x - message.x, player.y - message.y) >= 0.8) return;
+      if (player.eliminated || !validPickup(player, message)) return;
       this.broadcast({ type: 'pickup', x: message.x, y: message.y, playerId: player.id });
       return;
     }
     if (message.type === 'pickup' && room.phase === 'practice') {
-      const index = room.upgrades.findIndex(item => item.x === message.x && item.y === message.y && Math.hypot(player.x - item.x, player.y - item.y) < 0.8);
+      const index = room.upgrades.findIndex(item => item.x === message.x && item.y === message.y && validPickup(player, message));
       if (index < 0) return;
       room.upgrades.splice(index, 1);
       await this.save(room);

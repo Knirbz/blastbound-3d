@@ -26,7 +26,7 @@ export type BlastKind = 'normal' | 'powered' | 'chain';
 export type BlastCell = Point & { distance: number; direction: Direction | null };
 export type Upgrade = Point & { type: UpgradeType };
 export type CurseType = 'slow' | 'fast' | 'autoBomb' | 'noBomb' | 'weak';
-export type GameEvent = { type: 'explode' | 'crate' | 'hit' | 'shield' | 'upgrade' | 'enemy' | 'bomb' | 'warp' | 'cannonFire' | 'cannonImpact'; x: number; y: number; bombId?: number; bot?: boolean; remoteOwner?: string; kind?: BlastKind; upgrade?: UpgradeType; cells?: BlastCell[]; source?: Point };
+export type GameEvent = { type: 'explode' | 'crate' | 'hit' | 'shield' | 'upgrade' | 'enemy' | 'bomb' | 'warp' | 'cannonFire' | 'cannonImpact'; x: number; y: number; playerX?: number; playerY?: number; bombId?: number; bot?: boolean; remoteOwner?: string; kind?: BlastKind; upgrade?: UpgradeType; cells?: BlastCell[]; source?: Point };
 
 const dirs: Record<Direction, Point> = {
   up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 },
@@ -486,7 +486,7 @@ export class Game {
     this.checkHazards();
   }
   private collectUpgrade() {
-    const index=this.upgrades.findIndex(p=>Math.hypot(p.x-this.player.x,p.y-this.player.y)<0.4); if (index<0) return;
+    const index=this.upgrades.findIndex(p=>circleTouchesSquare(this.player.x,this.player.y,PLAYER_RADIUS,p.x,p.y,0.5)); if (index<0) return;
     const upgrade=this.upgrades.splice(index,1)[0];
     if(upgrade.type!=='skull'){this.player.curse=0;this.player.curseType=null;}
     switch(upgrade.type){
@@ -507,7 +507,7 @@ export class Game {
       case 'skull':this.player.curse=8;this.player.curseType=(['slow','fast','autoBomb','noBomb','weak'] as CurseType[])[Math.floor(this.rand()*5)];this.autoBombTimer=0.5;break;
       case 'shield':this.player.shield=1;break;
     }
-    this.events.push({type:'upgrade',x:upgrade.x,y:upgrade.y,upgrade:upgrade.type});
+    this.events.push({type:'upgrade',x:upgrade.x,y:upgrade.y,playerX:this.player.x,playerY:this.player.y,upgrade:upgrade.type});
   }
   private checkHazards() {
     const fireCells = [...this.fire.keys()].map(key=>key.split(',').map(Number));

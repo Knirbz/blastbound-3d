@@ -182,6 +182,27 @@ test('range and capacity pickups alter bombs, while a shield absorbs one hit', (
   assert.equal(game.player.lives,2);
 });
 
+test('walking across the edge of an upgrade tile collects it', () => {
+  const game = new Game(40); game.start(); openArena(game);
+  game.player.x=4;game.player.y=5.55;
+  game.upgrades.push({x:5,y:5,type:'range'});
+  for(let i=0;i<30;i++)game.move(1,0,1/60,'right');
+  assert.equal(game.upgrades.length,0);
+  assert.equal(game.player.range,2);
+  const event=game.drainEvents().find(item=>item.type==='upgrade');
+  assert.ok(event);
+  assert.ok(event.playerX<5&&event.playerY===5.55);
+});
+
+test('passing an adjacent upgrade without touching its tile does not collect it', () => {
+  const game = new Game(41); game.start(); openArena(game);
+  game.player.x=4;game.player.y=6;
+  game.upgrades.push({x:5,y:5,type:'range'});
+  for(let i=0;i<30;i++)game.move(1,0,1/60,'right');
+  assert.equal(game.upgrades.length,1);
+  assert.equal(game.player.range,1);
+});
+
 test('rare double fire pickup adds two tiles and respects the range cap',()=>{
   const game=new Game(245);game.start();openArena(game);
   collect(game,'range2');

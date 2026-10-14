@@ -1782,7 +1782,7 @@ function frame(now:number){
     if(event.type==='hit'){showToast(game.map==='lobby'?'TREFFER! ÜBE WEITER':'AU! EIN LEBEN VERLOREN');beep(170,0.28,'square',0.04);}
     if(event.type==='shield'){burst(event.x,event.y,'#8ec8ff',16);shockwave(event.x,event.y,'#8ec8ff',0.75);showToast('SCHILD HAT DICH GESCHÜTZT!');beep(520,0.21,'triangle',0.04);}
     if(event.type==='upgrade'){
-      if(lobbyConnection)lobbyConnection.send({type:'pickup',x:event.x,y:event.y});
+      if(lobbyConnection)lobbyConnection.send({type:'pickup',x:event.x,y:event.y,playerX:event.playerX,playerY:event.playerY});
       const type=event.upgrade??'range';
       const messages:Record<UpgradeType,string>={range:'FLAMMENREICHWEITE +1',range2:'FLAMMENREICHWEITE +2',capacity:'EINE BOMBE MEHR',speed:'TEMPO +1',remote:'FERNZÜNDER AKTIV',bombPass:'DURCH BOMBEN LAUFEN',blockPass:'DURCH KISTEN LAUFEN',glove:'BOMBEN TRAGEN & WERFEN',kick:'BOMBEN KICKEN',heart:'EIN LEBEN ZURÜCK',maxRange:'MAXIMALE REICHWEITE',powerBomb:'NÄCHSTE BOMBE: MAXIMAL',pierce:'SUPERBOMBEN: DURCH KISTEN',slime:'SCHLEIMBOMBEN',skull:'FLUCH AKTIV',shield:'SCHUTZSCHILD AKTIV'};
       showToast(messages[type]);burst(event.x,event.y,upgradeColors[type],12);beep(880,0.24,'triangle',0.05);
