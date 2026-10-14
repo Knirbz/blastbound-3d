@@ -125,8 +125,11 @@ const blastPalette:Record<BlastKind,{edge:string;core:string;spark:string}>={
   chain:{edge:'#aa71f4',core:'#ffe0ff',spark:'#d6a2ff'},
 };
 const textureLoader=new THREE.TextureLoader();
+const fxTextureLoads:Promise<void>[]=[];
 const particleTexture=(name:string)=>{
-  const texture=textureLoader.load(`/assets/kenney/particles/${name}.png`);
+  let resolveLoad!:()=>void,rejectLoad!:(reason:unknown)=>void;
+  fxTextureLoads.push(new Promise<void>((resolve,reject)=>{resolveLoad=resolve;rejectLoad=reject;}));
+  const texture=textureLoader.load(`/assets/kenney/particles/${name}.png`,resolveLoad,undefined,rejectLoad);
   texture.colorSpace=THREE.SRGBColorSpace;
   return texture;
 };
@@ -339,9 +342,9 @@ function character(primary:string,accent:string,evil=false){
   return g;
 }
 function bombVariant(bomb:Bomb):BombVariant{return bomb.owner!==undefined?'enemy':bomb.pierce?'super':bomb.slime?'slime':bomb.remote?'remote':bomb.range>=9?'power':bomb.range>2?'boosted':'normal';}
-function bombObject(bomb:Bomb){
+function bombObject(bomb:Bomb,forcedVariant?:BombVariant){
   const g=new THREE.Group();
-  const variant=bombVariant(bomb);
+  const variant=forcedVariant??bombVariant(bomb);
   const accent=bombAccent[variant],color=bombColors[variant];
   const art=bombModels.get(variant)?.clone(true)??null;
   let face:THREE.Object3D;
@@ -382,6 +385,20 @@ function disposeBombObject(object:THREE.Object3D){
   for(const child of object.children)if(child!==object.userData.art)disposeVisualGeometry(child);
   ((object.userData.warningRing as THREE.Mesh).material as THREE.Material).dispose();
   (object.userData.fuseSpark as THREE.Sprite).material.dispose();
+}
+const bombPool=new Map<BombVariant,THREE.Object3D[]>();
+function acquireBombObject(bomb:Bomb){
+  const variant=bombVariant(bomb);
+  const object=bombPool.get(variant)?.pop()??bombObject(bomb);
+  object.userData.lastTick=-1;
+  return object;
+}
+function releaseBombObject(object:THREE.Object3D){
+  props.remove(object);
+  const variant=object.userData.variant as BombVariant;
+  const pool=bombPool.get(variant)??[];
+  if(pool.length<10){pool.push(object);bombPool.set(variant,pool);}
+  else disposeBombObject(object);
 }
 type FireParts={marker:THREE.Mesh;ground:THREE.Mesh;flame:THREE.Mesh<THREE.PlaneGeometry,THREE.ShaderMaterial>;outer:THREE.Sprite;core:THREE.Sprite;smoke:THREE.Sprite;arc:THREE.Sprite|null;light:THREE.PointLight|null;chargeRing:THREE.Mesh|null};
 const flameVertexShader=`
@@ -586,9 +603,12 @@ const particlePool:THREE.Mesh[]=[];
 const splinterPool:THREE.Mesh[]=[];
 type Shockwave={object:THREE.Mesh;material:THREE.MeshBasicMaterial;age:number;duration:number;size:number};
 const shockwaves:Shockwave[]=[];
+const shockwavePool:Shockwave[]=[];
 function shockwave(x:number,y:number,color:string,size=1){
-  const material=new THREE.MeshBasicMaterial({color,transparent:true,opacity:0.8,side:THREE.DoubleSide,depthWrite:false});
-  const object=new THREE.Mesh(new THREE.RingGeometry(0.33,0.43,32),material);
+  const pooled=shockwavePool.pop();
+  const material=pooled?.material??new THREE.MeshBasicMaterial({color,transparent:true,opacity:0.8,side:THREE.DoubleSide,depthWrite:false});
+  const object=pooled?.object??new THREE.Mesh(new THREE.RingGeometry(0.33,0.43,32),material);
+  material.color.set(color);material.opacity=0.8;
   object.rotation.x=-Math.PI/2;object.position.copy(world({x,y}));object.position.y=0.13;
   effects.add(object);shockwaves.push({object,material,age:0,duration:0.48,size});
 }
@@ -598,7 +618,7 @@ function updateShockwaves(dt:number){
     const progress=Math.min(1,wave.age/wave.duration);
     wave.object.scale.setScalar((0.35+2.4*progress)*wave.size);
     wave.material.opacity=0.8*(1-progress);
-    if(progress>=1){effects.remove(wave.object);wave.material.dispose();wave.object.geometry.dispose();shockwaves.splice(i,1);}
+    if(progress>=1){effects.remove(wave.object);shockwavePool.push(wave);shockwaves.splice(i,1);}
   }
 }
 function burst(x:number,y:number,color:string,count:number){
@@ -661,19 +681,22 @@ function updateSpriteEffects(dt:number){
 }
 type Scorch={object:THREE.Mesh;age:number;duration:number};
 const scorches:Scorch[]=[];
+const scorchPool:Scorch[]=[];
+function releaseScorch(scorch:Scorch){board.remove(scorch.object);scorchPool.push(scorch);}
 function markScorch(x:number,y:number){
-  const material=new THREE.MeshBasicMaterial({map:fxTextures.scorch,color:'#263246',transparent:true,opacity:0.34,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2});
-  const object=new THREE.Mesh(new THREE.PlaneGeometry(1.15,1.15),material);
+  const pooled=scorchPool.pop();
+  const object=pooled?.object??new THREE.Mesh(new THREE.PlaneGeometry(1.15,1.15),new THREE.MeshBasicMaterial({map:fxTextures.scorch,color:'#263246',transparent:true,opacity:0.34,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2}));
+  (object.material as THREE.MeshBasicMaterial).opacity=0.34;
   object.rotation.x=-Math.PI/2;object.rotation.z=(x*7+y*13)*0.4;
   object.position.copy(world({x,y}));object.position.y=0.009;
   board.add(object);scorches.push({object,age:0,duration:7});
-  if(scorches.length>26){const old=scorches.shift()!;board.remove(old.object);old.object.geometry.dispose();(old.object.material as THREE.Material).dispose();}
+  if(scorches.length>26)releaseScorch(scorches.shift()!);
 }
 function updateScorches(dt:number){
   for(let i=scorches.length-1;i>=0;i--){
     const scorch=scorches[i];scorch.age+=dt;
     (scorch.object.material as THREE.MeshBasicMaterial).opacity=0.34*Math.max(0,1-scorch.age/scorch.duration);
-    if(scorch.age>=scorch.duration){board.remove(scorch.object);scorch.object.geometry.dispose();(scorch.object.material as THREE.Material).dispose();scorches.splice(i,1);}
+    if(scorch.age>=scorch.duration){releaseScorch(scorch);scorches.splice(i,1);}
   }
 }
 let portalObjectRef:THREE.Object3D|null=null;
@@ -889,7 +912,7 @@ async function loadBombAssets(){
       bombModels.set(variant,prepareTileModel(gltf,width,1.08));
     }catch(error){console.warn(`Blastbound ${variant} bomb asset unavailable`,error);}
   }));
-  for(const obj of bombObjects.values()){props.remove(obj);disposeBombObject(obj);}
+  for(const obj of bombObjects.values())releaseBombObject(obj);
   bombObjects.clear();
 }
 async function loadDungeonAssets(){
@@ -1167,6 +1190,7 @@ function renderMapOptions(){
     button.addEventListener('click',()=>{
       if(map===selectedMap)return;
       clearObjects();selectedMap=map;game.setMap(map);rebuildBoardSurface();applyMapTheme();syncStatic();batchStaticProps();resize();updateHud();
+      if(assetsReady)warmGameplayRendering();
       mapHint.textContent=mapDescriptions[map];
       updateCopy();
       for(const option of mapOptions.querySelectorAll<HTMLButtonElement>('[data-map]'))option.setAttribute('aria-pressed',String(option.dataset.map===map));
@@ -1225,8 +1249,8 @@ function syncDynamic(){
   }
   for(const bomb of game.bombs){
     let obj=bombObjects.get(bomb.id);
-    if(obj&&obj.userData.variant!==bombVariant(bomb)){props.remove(obj);disposeBombObject(obj);bombObjects.delete(bomb.id);obj=undefined;}
-    if(!obj){obj=bombObject(bomb);obj.position.copy(world(bomb));props.add(obj);bombObjects.set(bomb.id,obj);}
+    if(obj&&obj.userData.variant!==bombVariant(bomb)){releaseBombObject(obj);bombObjects.delete(bomb.id);obj=undefined;}
+    if(!obj){obj=acquireBombObject(bomb);obj.position.copy(world(bomb));props.add(obj);bombObjects.set(bomb.id,obj);}
     const age=BOMB_FUSE-bomb.fuse;
     const landing=Math.max(0,1-age/0.13);
     const warning=Math.max(0,Math.min(1,(0.72-bomb.fuse)/0.72));
@@ -1265,7 +1289,7 @@ function syncDynamic(){
     const tick=Math.floor((0.72-bomb.fuse)/0.18);
     if(warning>0&&tick>(obj.userData.lastTick??-1)){obj.userData.lastTick=tick;beep(450+tick*90,0.045,'triangle',0.012);}
   }
-  for(const [id,obj] of bombObjects)if(!game.bombs.some(b=>b.id===id)){props.remove(obj);disposeBombObject(obj);bombObjects.delete(id);}
+  for(const [id,obj] of bombObjects)if(!game.bombs.some(b=>b.id===id)){releaseBombObject(obj);bombObjects.delete(id);}
   for(const [id,obj] of cartObjects)if(!game.bombs.some(b=>b.id===id)){props.remove(obj);cartObjects.delete(id);}
   for(const [id,ttl] of game.fire){
     let obj=fireObjects.get(id);
@@ -1345,7 +1369,7 @@ function syncDynamic(){
 }
 function clearObjects(){
   for(const obj of tileObjects.values())removeTileObject(obj);tileObjects.clear();clearStaticBatches();
-  for(const obj of bombObjects.values()){props.remove(obj);disposeBombObject(obj);}bombObjects.clear();
+  for(const obj of bombObjects.values())releaseBombObject(obj);bombObjects.clear();
   for(const obj of cartObjects.values())props.remove(obj);cartObjects.clear();
   for(const obj of cannonShotObjects.values())effects.remove(obj);cannonShotObjects.clear();
   for(const obj of enemyObjects.values())actors.remove(obj);enemyObjects.clear();
@@ -1354,8 +1378,8 @@ function clearObjects(){
   for(const obj of upgradeObjects.values()){props.remove(obj);disposeVisualGeometry(obj);}upgradeObjects.clear();
   for(const p of particles){effects.remove(p.object);(p.object.geometry===splinterGeometry?splinterPool:particlePool).push(p.object);}particles.length=0;
   for(const fx of spriteEffects){effects.remove(fx.object);spritePool.push(fx.object);}spriteEffects.length=0;
-  for(const scorch of scorches){board.remove(scorch.object);scorch.object.geometry.dispose();(scorch.object.material as THREE.Material).dispose();}scorches.length=0;
-  for(const wave of shockwaves){effects.remove(wave.object);wave.material.dispose();wave.object.geometry.dispose();}shockwaves.length=0;
+  for(const scorch of scorches)releaseScorch(scorch);scorches.length=0;
+  for(const wave of shockwaves){effects.remove(wave.object);shockwavePool.push(wave);}shockwaves.length=0;
   if(portalObjectRef){props.remove(portalObjectRef);portalObjectRef=null;}
 }
 function resize(){
@@ -1389,14 +1413,16 @@ function beep(freq:number,duration:number,type:OscillatorType='sine',volume=0.04
   osc.connect(gain);gain.connect(audioContext.destination);osc.start();osc.stop(audioContext.currentTime+duration);
 }
 let impactNoise:AudioBuffer|null=null;
+function prepareImpactNoise(){
+  if(impactNoise)return;
+  impactNoise=new AudioBuffer({numberOfChannels:1,length:Math.floor(44100*0.45),sampleRate:44100});
+  const samples=impactNoise.getChannelData(0);
+  for(let i=0;i<samples.length;i++)samples[i]=Math.random()*2-1;
+}
 function noiseHit(duration:number,volume:number,highpass=240){
   if(!audioEnabled)return;
   audioContext ??= new AudioContext();
-  if(!impactNoise){
-    impactNoise=audioContext.createBuffer(1,Math.floor(audioContext.sampleRate*0.45),audioContext.sampleRate);
-    const samples=impactNoise.getChannelData(0);
-    for(let i=0;i<samples.length;i++)samples[i]=Math.random()*2-1;
-  }
+  prepareImpactNoise();
   const source=audioContext.createBufferSource(),filter=audioContext.createBiquadFilter(),gain=audioContext.createGain();
   source.buffer=impactNoise;filter.type='highpass';filter.frequency.value=highpass;
   gain.gain.setValueAtTime(volume,audioContext.currentTime);
@@ -1474,10 +1500,12 @@ function showResult(){
   stage.classList.remove('game-active');pauseMenu.classList.add('hidden');result.classList.remove('hidden');beep(win?780:180,0.35,'triangle',0.08);
 }
 function prepareMap(map:MapType,seed?:number,onlineMatch=false){
+  const previousMap=game.map;
   clearObjects();game.map=map;game.onlineLobby=map==='lobby'&&!!lobbyConnection;game.onlineMatch=onlineMatch;game.onlineMatchGuest=onlineMatch&&lobbySelfId!==lobbyHostId;game.reset(seed);game.setDifficulty(selectedDifficulty);rebuildBoardSurface();
   playerObject.position.copy(world(game.player));
   camera.zoom=map==='lobby'?1.22:1;camera.updateProjectionMatrix();
   applyMapTheme();syncStatic();batchStaticProps();resize();updateHud();
+  if(assetsReady&&map!==previousMap)warmGameplayRendering();
 }
 function leaveLobby(){
   lobbyConnection?.close();lobbyConnection=null;lobbyCode='';lobbySelfId='';
@@ -1555,6 +1583,7 @@ async function submitLobby(){
 }
 function start(restart=false){
   if(restart)prepareMap(selectedMap);
+  if(audioEnabled){audioContext ??= new AudioContext();void audioContext.resume();}
   game.start();stage.classList.add('game-active');mainMenu.classList.add('hidden');intro.classList.add('hidden');
   pauseMenu.classList.add('hidden');result.classList.add('hidden');lobbyToolbar.classList.add('hidden');lobbyMatchPanel.classList.add('hidden');updateHud();
 }
@@ -1692,9 +1721,10 @@ for(const target of [stage,mobileControls]){
 let last=performance.now(),accumulator=0,lastStatus=game.status,footstepTimer=0,cameraJolt=0,hudTimer=0;
 let performanceWindow=0,slowFrames=0;
 const reportRenderStats=new URLSearchParams(location.search).has('perf');
-let statsAt=performance.now(),statsFrames=0,statsCalls=0;
+let statsAt=performance.now(),statsFrames=0,statsCalls=0,statsMaxFrameMs=0,statsMaxRenderMs=0;
 const cameraRest=camera.position.clone();
 function frame(now:number){
+  const frameStarted=reportRenderStats?performance.now():0;
   requestAnimationFrame(frame);
   const frameTime=(now-last)/1000;
   const dt=Math.min(frameTime,0.1);last=now;accumulator+=dt;footstepTimer=Math.max(0,footstepTimer-dt);
@@ -1802,12 +1832,15 @@ function frame(now:number){
   if(cameraJolt>0){camera.position.x+=Math.sin(now*0.071)*cameraJolt;camera.position.z+=Math.sin(now*0.096)*cameraJolt*0.6;}
   if(game.status==='running'){playerArt?.mixer.update(dt);for(const art of enemyArt.values())art.mixer.update(dt);for(const art of remotePlayerArt.values())art.mixer.update(dt);}
   hudTimer-=dt;if(hudTimer<=0){updateHud();hudTimer=0.2;}
+  const renderStarted=reportRenderStats?performance.now():0;
   renderer.render(scene,camera);
   if(reportRenderStats){
     statsFrames++;statsCalls+=renderer.info.render.calls;
+    statsMaxFrameMs=Math.max(statsMaxFrameMs,performance.now()-frameStarted);
+    statsMaxRenderMs=Math.max(statsMaxRenderMs,performance.now()-renderStarted);
     if(now-statsAt>=3000){
-      console.info(`[render] map=${game.map} fps=${(statsFrames*1000/(now-statsAt)).toFixed(1)} calls=${Math.round(statsCalls/statsFrames)} triangles=${renderer.info.render.triangles}`);
-      statsAt=now;statsFrames=0;statsCalls=0;
+      console.info(`[render] map=${game.map} fps=${(statsFrames*1000/(now-statsAt)).toFixed(1)} calls=${Math.round(statsCalls/statsFrames)} triangles=${renderer.info.render.triangles} maxFrameMs=${statsMaxFrameMs.toFixed(1)} maxRenderMs=${statsMaxRenderMs.toFixed(1)}`);
+      statsAt=now;statsFrames=0;statsCalls=0;statsMaxFrameMs=0;statsMaxRenderMs=0;
     }
   }
 }
@@ -1815,8 +1848,63 @@ renderCharacterOptions();renderDifficultyOptions();renderMapOptions();
 const inviteCode=new URL(location.href).searchParams.get('lobby')?.toUpperCase()??'';
 if(/^[A-HJ-NP-Z2-9]{6}$/.test(inviteCode))openLobbySetup('join',inviteCode);
 const assetLoading=document.querySelector<HTMLElement>('#asset-loading')!;
-void Promise.all([loadKenneyAssets(),loadBombAssets(),loadDungeonAssets(),loadMarketAssets(),loadGraveyardAssets(),loadPirateAssets(),loadUpgradeAssets()]).then(()=>{
+let effectsPrewarmed=false;
+function warmGameplayRendering(){
+  prepareImpactNoise();
+  for(const texture of Object.values(fxTextures))renderer.initTexture(texture);
+  for(const material of Object.values(upgradeIconMats))if(material.map)renderer.initTexture(material.map);
+  try{
+    renderer.render(scene,camera);
+    const sampleBomb:Bomb={id:-1,x:0,y:0,fuse:BOMB_FUSE,range:1,ownerPass:false};
+    for(const variant of Object.keys(bombColors) as BombVariant[]){
+      const object=bombPool.get(variant)?.pop()??bombObject(sampleBomb,variant);
+      object.position.set(0,0,0);props.add(object);
+      renderer.render(scene,camera);
+      releaseBombObject(object);
+    }
+    for(const kind of Object.keys(blastPalette) as BlastKind[]){
+      const warmFires:THREE.Object3D[]=[];
+      for(const direction of [null,'up','right','down','left'] as const){
+        for(let i=0;i<(kind==='normal'&&direction?3:1);i++){
+          const object=acquireFireObject(kind,{x:0,y:0,distance:direction?1:0,direction});
+          object.position.set(0,0,0);effects.add(object);warmFires.push(object);
+        }
+      }
+      if(kind==='normal'&&!effectsPrewarmed){
+        shockwave(0,0,blastPalette.normal.edge);
+        markScorch(Math.floor(game.width/2),5);
+      }
+      const warmParticles:THREE.Mesh[]=[];
+      const warmSprites:THREE.Sprite[]=[];
+      if(kind==='normal'&&!effectsPrewarmed){
+        for(let i=0;i<56;i++){
+          const object=new THREE.Mesh(i<24?particleGeometry:splinterGeometry,new THREE.MeshBasicMaterial({color:'#ffd064',transparent:true,opacity:1,depthWrite:false}));
+          object.position.y=0.4;effects.add(object);warmParticles.push(object);
+        }
+        for(let i=0;i<20;i++){
+          const object=new THREE.Sprite(fxMaterial(fxTextures.smoke,'#536078',0.4,false));
+          object.position.y=0.5;effects.add(object);warmSprites.push(object);
+        }
+      }
+      renderer.render(scene,camera);
+      for(const object of warmFires)releaseFireObject(object);
+      for(const object of warmParticles){effects.remove(object);(object.geometry===splinterGeometry?splinterPool:particlePool).push(object);}
+      for(const object of warmSprites){effects.remove(object);spritePool.push(object);}
+    }
+    if(!effectsPrewarmed){
+      const wave=shockwaves.pop();if(wave){effects.remove(wave.object);shockwavePool.push(wave);}
+      const scorch=scorches.pop();if(scorch)releaseScorch(scorch);
+    }
+    renderer.render(scene,camera);
+    renderer.getContext().finish();
+    effectsPrewarmed=true;
+  }finally{
+    renderer.setRenderTarget(null);
+  }
+}
+void Promise.all([...fxTextureLoads,loadKenneyAssets(),loadBombAssets(),loadDungeonAssets(),loadMarketAssets(),loadGraveyardAssets(),loadPirateAssets(),loadUpgradeAssets()]).then(()=>{
   assetsReady=true;playerObject.position.copy(world(game.player));applyMapTheme();syncStatic();batchStaticProps();updateHud();
+  warmGameplayRendering();
   assetLoading.remove();last=performance.now();requestAnimationFrame(frame);
 }).catch(error=>{
   console.error('Could not preload game assets',error);
