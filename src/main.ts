@@ -196,7 +196,7 @@ const actors = new THREE.Group(); scene.add(actors);
 const effects = new THREE.Group(); scene.add(effects);
 const boardSurface=new THREE.Group();board.add(boardSurface);
 let floorBase:THREE.Mesh;
-const floorCells:THREE.Mesh[]=[];
+const floorBatches:THREE.InstancedMesh[]=[];
 const marketFloor=new THREE.Group();board.add(marketFloor);
 const graveyardFloor=new THREE.Group();board.add(graveyardFloor);
 const pirateFloor=new THREE.Group();board.add(pirateFloor);
@@ -207,15 +207,10 @@ const floorDirtMaterial=new THREE.MeshBasicMaterial({map:fxTextures.dirt,color:'
 const rimMaterial=mat('#202d48');
 let rimBase:THREE.Mesh;
 function rebuildBoardSurface(){
-  for(const child of [...boardSurface.children]){boardSurface.remove(child);disposeVisualGeometry(child);}
-  floorCells.length=0;
+  for(const child of [...boardSurface.children]){boardSurface.remove(child);if(child instanceof THREE.InstancedMesh)child.dispose();disposeVisualGeometry(child);}
+  floorBatches.length=0;
   floorBase=rounded(game.width+0.28,0.34,HEIGHT+0.28,0.14,floorEdge);
   floorBase.position.y=-0.28;floorBase.receiveShadow=true;boardSurface.add(floorBase);
-  for(let y=0;y<HEIGHT;y++)for(let x=0;x<game.width;x++){
-    const variation=(x*17+y*31+x*y*7)%floorMats.length;
-    const cell=mesh(new THREE.BoxGeometry(0.995,0.07,0.995),floorMats[variation],false);
-    cell.position.set(x-(game.width-1)/2,-0.07,y-5);cell.receiveShadow=true;boardSurface.add(cell);floorCells.push(cell);
-  }
   for(let y=1;y<HEIGHT-1;y++)for(let x=1;x<game.width-1;x++){
     const variant=(x*23+y*19+x*y*11)%17;
     if(variant>2)continue;
@@ -239,10 +234,24 @@ function applyMapTheme(){
   pirateFloor.visible=pirate&&pirateFloor.children.length>0;
   ghostGraveVisuals.visible=graveyard;
   cannonWarningVisuals.visible=pirate;
-  for(let i=0;i<floorCells.length;i++){
-    floorCells[i].material=(foundry?foundryFloorMats:market?marketFloorMats:graveyard?graveyardFloorMats:pirate?pirateFloorMats:floorMats)[i%4];
-    const x=i%game.width,y=Math.floor(i/game.width);
-    floorCells[i].visible=!marketFloor.visible&&!graveyardFloor.visible&&!pirateFloor.visible&&(!lobby||(x>=2&&x<=10&&y>=1&&y<=9));
+  for(const batch of floorBatches){boardSurface.remove(batch);batch.dispose();batch.geometry.dispose();}
+  floorBatches.length=0;
+  if(!marketFloor.visible&&!graveyardFloor.visible&&!pirateFloor.visible){
+    const materials=foundry?foundryFloorMats:market?marketFloorMats:graveyard?graveyardFloorMats:pirate?pirateFloorMats:floorMats;
+    const positions:THREE.Vector3[][]=[[],[],[],[]];
+    for(let y=0;y<HEIGHT;y++)for(let x=0;x<game.width;x++){
+      if(lobby&&(x<2||x>10||y<1||y>9))continue;
+      positions[(x+y*game.width)%4].push(new THREE.Vector3(x-(game.width-1)/2,-0.07,y-5));
+    }
+    const transform=new THREE.Matrix4();
+    for(let i=0;i<4;i++){
+      if(!positions[i].length)continue;
+      const batch=new THREE.InstancedMesh(new THREE.BoxGeometry(0.995,0.07,0.995),materials[i],positions[i].length);
+      batch.receiveShadow=true;
+      positions[i].forEach((position,index)=>batch.setMatrixAt(index,transform.makeTranslation(position.x,position.y,position.z)));
+      batch.instanceMatrix.needsUpdate=true;batch.computeBoundingSphere();
+      boardSurface.add(batch);floorBatches.push(batch);
+    }
   }
   floorBase.material=foundry?foundryEdge:market?marketEdge:graveyard?graveyardEdge:pirate?pirateEdge:floorEdge;
   (rimBase.material as THREE.MeshStandardMaterial).color.set(foundry?'#242936':market?'#536e68':graveyard?'#292b3d':pirate?'#3d352f':'#202d48');
@@ -310,6 +319,10 @@ function foundryCrate(x:number,y:number,portal=false){
   }
   return g;
 }
+const foundryWallTemplate=foundryWall();
+const foundryCrateTemplate=foundryCrate(1,0);
+const foundryDrumTemplate=foundryCrate(0,0);
+const foundryPortalCrateTemplate=foundryCrate(1,0,true);
 function character(primary:string,accent:string,evil=false){
   const g=new THREE.Group();
   const suit=mat(primary,0.43), highlight=mat(accent,0.3), dark=mat(evil?'#392449':'#284b64',0.35);
@@ -445,6 +458,22 @@ function disposeFireObject(object:THREE.Object3D){
     if(child instanceof THREE.Sprite)(child.material as THREE.Material).dispose();
   });
 }
+const firePool=new Map<string,THREE.Object3D[]>();
+function firePoolKey(kind:BlastKind,cell:BlastCell|undefined){return `${kind}:${cell?.direction??'center'}`;}
+function acquireFireObject(kind:BlastKind,cell:BlastCell|undefined){
+  const object=firePool.get(firePoolKey(kind,cell))?.pop()??fireObject(kind,cell);
+  object.userData.cell=cell;
+  const flame=(object.userData.parts as FireParts).flame;
+  flame.material.uniforms.uSeed.value=Math.abs((cell?.x??0)*13+(cell?.y??0)*7)%11;
+  return object;
+}
+function releaseFireObject(object:THREE.Object3D){
+  effects.remove(object);
+  const id=firePoolKey(object.userData.kind as BlastKind,object.userData.cell as BlastCell|undefined);
+  const pool=firePool.get(id)??[];
+  if(pool.length<32){pool.push(object);firePool.set(id,pool);}
+  else disposeFireObject(object);
+}
 function portalObject(){
   const g=new THREE.Group();
   const disc=mesh(new THREE.CylinderGeometry(0.4,0.4,0.035,32),mat('#174763',0.2));disc.position.y=0.03;g.add(disc);
@@ -488,6 +517,60 @@ function setAnimatedState(art:AnimatedArt|null,moving:boolean){
   if(next&&next!==art.active){next.reset().play();if(art.active)next.crossFadeFrom(art.active,0.14,false);art.active=next;}
 }
 const tileObjects=new Map<string,THREE.Object3D>();
+type InstanceHandle={batch:THREE.InstancedMesh;index:number};
+const tileInstances=new Map<THREE.Object3D,InstanceHandle[]>();
+let staticBatches:THREE.InstancedMesh[]=[];
+let assetsReady=false;
+const hiddenInstanceMatrix=new THREE.Matrix4().makeScale(0,0,0);
+function batchClonedMeshes(parent:THREE.Group,roots:THREE.Object3D[]){
+  type Entry={root:THREE.Object3D;mesh:THREE.Mesh;matrix:THREE.Matrix4};
+  const buckets=new Map<string,Entry[]>();
+  const batchedRoots:THREE.Object3D[]=[];
+  for(const root of roots){
+    let supported=true;
+    const meshes:THREE.Mesh[]=[];
+    root.updateMatrixWorld(true);
+    root.traverse(child=>{
+      if(child instanceof THREE.SkinnedMesh||child instanceof THREE.InstancedMesh||child instanceof THREE.Sprite||child instanceof THREE.Line||child instanceof THREE.Points||child instanceof THREE.Light) supported=false;
+      else if(child instanceof THREE.Mesh&&child.visible)meshes.push(child);
+    });
+    if(!supported||!meshes.length)continue;
+    batchedRoots.push(root);
+    for(const part of meshes){
+      const materials=Array.isArray(part.material)?part.material:[part.material];
+      const id=`${part.geometry.uuid}:${materials.map(material=>material.uuid).join(',')}:${Number(part.castShadow)}:${Number(part.receiveShadow)}:${part.renderOrder}`;
+      const entries=buckets.get(id)??[];
+      entries.push({root,mesh:part,matrix:part.matrixWorld.clone()});buckets.set(id,entries);
+    }
+  }
+  const handles=new Map<THREE.Object3D,InstanceHandle[]>();
+  const batches:THREE.InstancedMesh[]=[];
+  for(const entries of buckets.values()){
+    const first=entries[0].mesh;
+    const batch=new THREE.InstancedMesh(first.geometry,first.material,entries.length);
+    batch.castShadow=first.castShadow;batch.receiveShadow=first.receiveShadow;batch.renderOrder=first.renderOrder;
+    batch.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    entries.forEach(({root,matrix},index)=>{
+      batch.setMatrixAt(index,matrix);
+      const list=handles.get(root)??[];list.push({batch,index});handles.set(root,list);
+    });
+    batch.instanceMatrix.needsUpdate=true;batch.computeBoundingSphere();parent.add(batch);batches.push(batch);
+  }
+  for(const root of batchedRoots)parent.remove(root);
+  return {batches,handles};
+}
+function clearStaticBatches(){
+  for(const batch of staticBatches){props.remove(batch);batch.dispose();}
+  staticBatches=[];tileInstances.clear();
+}
+function batchStaticProps(){
+  if(!assetsReady)return;
+  const unbatched=[...tileObjects.values()].filter(root=>root.parent===props&&!root.userData.procedural);
+  if(!unbatched.length)return;
+  const result=batchClonedMeshes(props,unbatched);
+  staticBatches.push(...result.batches);
+  for(const [root,handles] of result.handles)tileInstances.set(root,handles);
+}
 const bombObjects=new Map<number,THREE.Object3D>();
 const cartObjects=new Map<number,THREE.Object3D>();
 const enemyObjects=new Map<number,THREE.Group>();
@@ -499,6 +582,8 @@ type Particle = { object: THREE.Mesh; velocity: THREE.Vector3; life: number; max
 const particles:Particle[]=[];
 const particleGeometry=new THREE.OctahedronGeometry(0.055,0);
 const splinterGeometry=new THREE.BoxGeometry(0.075,0.19,0.065);
+const particlePool:THREE.Mesh[]=[];
+const splinterPool:THREE.Mesh[]=[];
 type Shockwave={object:THREE.Mesh;material:THREE.MeshBasicMaterial;age:number;duration:number;size:number};
 const shockwaves:Shockwave[]=[];
 function shockwave(x:number,y:number,color:string,size=1){
@@ -521,8 +606,8 @@ function burst(x:number,y:number,color:string,count:number){
   const visualCount=lowPowerDevice||economyGraphics?Math.ceil(count*0.5):count;
   for(let i=0;i<visualCount;i++){
     if(particles.length>=(lowPowerDevice||economyGraphics?90:220))break;
-    const material=new THREE.MeshBasicMaterial({color,transparent:true,opacity:1,depthWrite:false});
-    const object=new THREE.Mesh(particleGeometry,material);
+    const object=particlePool.pop()??new THREE.Mesh(particleGeometry,new THREE.MeshBasicMaterial({color,transparent:true,opacity:1,depthWrite:false}));
+    (object.material as THREE.MeshBasicMaterial).color.set(color);(object.material as THREE.MeshBasicMaterial).opacity=1;
     object.position.set(origin.x+(Math.random()-.5)*.22,.38,origin.z+(Math.random()-.5)*.22);
     object.scale.setScalar(.6+Math.random()*1.5);effects.add(object);
     particles.push({object,velocity:new THREE.Vector3((Math.random()-.5)*2.7,1.3+Math.random()*2.2,(Math.random()-.5)*2.7),life:.55+Math.random()*.25,maxLife:.8});
@@ -533,8 +618,8 @@ function crateBurst(x:number,y:number){
   for(let i=0;i<(lowPowerDevice||economyGraphics?4:9);i++){
     if(particles.length>=(lowPowerDevice||economyGraphics?90:220))break;
     const colors=game.map==='foundry'?['#f1bd70','#8a9ba9','#71d7df']:['#e6a473','#a56543','#c88557'];
-    const material=new THREE.MeshBasicMaterial({color:colors[i%3],transparent:true,opacity:1,depthWrite:false});
-    const object=new THREE.Mesh(splinterGeometry,material);
+    const object=splinterPool.pop()??new THREE.Mesh(splinterGeometry,new THREE.MeshBasicMaterial({color:colors[i%3],transparent:true,opacity:1,depthWrite:false}));
+    (object.material as THREE.MeshBasicMaterial).color.set(colors[i%3]);(object.material as THREE.MeshBasicMaterial).opacity=1;
     object.position.set(origin.x+(Math.random()-.5)*0.4,0.35+Math.random()*0.3,origin.z+(Math.random()-.5)*0.4);
     effects.add(object);
     const life=0.45+Math.random()*0.35;
@@ -546,14 +631,17 @@ function updateParticles(dt:number){
     const p=particles[i];p.life-=dt;p.velocity.y-=dt*5;p.object.position.addScaledVector(p.velocity,dt);
     p.object.rotation.x+=dt*8;p.object.rotation.z+=dt*6;
     (p.object.material as THREE.MeshBasicMaterial).opacity=Math.max(0,p.life/p.maxLife);
-    if(p.life<=0){effects.remove(p.object);(p.object.material as THREE.Material).dispose();particles.splice(i,1);}
+    if(p.life<=0){effects.remove(p.object);(p.object.geometry===splinterGeometry?splinterPool:particlePool).push(p.object);particles.splice(i,1);}
   }
 }
 type SpriteFx={object:THREE.Sprite;velocity:THREE.Vector3;age:number;delay:number;duration:number;opacity:number;startScale:number;endScale:number};
 const spriteEffects:SpriteFx[]=[];
+const spritePool:THREE.Sprite[]=[];
 function transientSprite(x:number,y:number,texture:THREE.Texture,color:string,options:{height:number;duration:number;delay?:number;opacity:number;startScale:number;endScale:number;velocity?:THREE.Vector3;additive?:boolean}){
   if(spriteEffects.length>=(lowPowerDevice||economyGraphics?75:180))return;
-  const object=new THREE.Sprite(fxMaterial(texture,color,0,options.additive??true));
+  const object=spritePool.pop()??new THREE.Sprite(fxMaterial(texture,color,0,options.additive??true));
+  object.material.map=texture;object.material.color.set(color);object.material.opacity=0;
+  object.material.blending=(options.additive??true)?THREE.AdditiveBlending:THREE.NormalBlending;
   object.position.copy(world({x,y}));object.position.y=options.height;
   object.scale.setScalar(options.startScale);
   effects.add(object);
@@ -564,7 +652,7 @@ function updateSpriteEffects(dt:number){
     const fx=spriteEffects[i];fx.age+=dt;
     const progress=(fx.age-fx.delay)/fx.duration;
     if(progress<0)continue;
-    if(progress>=1){effects.remove(fx.object);fx.object.material.dispose();spriteEffects.splice(i,1);continue;}
+    if(progress>=1){effects.remove(fx.object);spritePool.push(fx.object);spriteEffects.splice(i,1);continue;}
     const envelope=Math.min(1,progress*6)*Math.pow(1-progress,1.35);
     fx.object.material.opacity=fx.opacity*envelope;
     fx.object.scale.setScalar(fx.startScale+(fx.endScale-fx.startScale)*progress);
@@ -739,7 +827,7 @@ function handleLobbyMessage(message:RoomMessage){
   if(message.type==='world'&&game.onlineMatchGuest){
     let changed=false;
     for(let y=0;y<HEIGHT;y++)for(let x=0;x<game.width;x++)if(game.tiles[y][x]!==message.tiles[y]?.[x]){game.tiles[y][x]=message.tiles[y][x];changed=true;}
-    if(changed)syncStatic();
+    if(changed){syncStatic();batchStaticProps();}
     game.upgrades=message.upgrades;game.enemies=message.enemies;
     game.cannonShots=message.cannonShots;game.cannonWarning=message.cannonWarning;
     return;
@@ -848,6 +936,7 @@ async function loadMarketAssets(){
     for(let y=0;y<HEIGHT;y++)for(let x=0;x<WIDTH;x++){
       const cell=floor.clone(true);cell.position.set(x-6,-0.03,y-5);marketFloor.add(cell);
     }
+    batchClonedMeshes(marketFloor,[...marketFloor.children]);
   }
   applyMapTheme();
   if(game.map==='market')rebuildStaticProps();
@@ -886,6 +975,7 @@ async function loadGraveyardAssets(){
     for(let y=0;y<HEIGHT;y++)for(let x=0;x<WIDTH;x++){
       const cell=floor.clone(true);cell.position.set(x-6,-0.03,y-5);graveyardFloor.add(cell);
     }
+    batchClonedMeshes(graveyardFloor,[...graveyardFloor.children]);
   }
   ghostGraveVisuals.clear();
   const border=graveyardModels.get('grave-border'),ghost=graveyardModels.get('character-ghost'),lantern=graveyardModels.get('lantern-glass');
@@ -930,6 +1020,7 @@ async function loadPirateAssets(){
     for(let y=0;y<HEIGHT;y++)for(let x=0;x<WIDTH;x++){
       const cell=floor.clone(true);cell.position.set(x-6,-0.03,y-5);pirateFloor.add(cell);
     }
+    batchClonedMeshes(pirateFloor,[...pirateFloor.children]);
   }
   cannonWarningVisuals.clear();
   for(const lane of [{x:2,y:3},{x:10,y:7}]){
@@ -945,12 +1036,12 @@ async function loadPirateAssets(){
 }
 function rebuildStaticProps(){
   for(const obj of tileObjects.values())removeTileObject(obj);
-  tileObjects.clear();syncStatic();
+  tileObjects.clear();clearStaticBatches();syncStatic();batchStaticProps();
 }
 function tileModel(x:number,y:number,tile:1|2){
   if(game.map==='foundry'){
-    const model=tile===1?foundryWall():foundryCrate(x,y,x===game.portal.x&&y===game.portal.y);
-    model.userData.procedural=true;return model;
+    const portal=x===game.portal.x&&y===game.portal.y;
+    return (tile===1?foundryWallTemplate:portal?foundryPortalCrateTemplate:(x*5+y*7)%3===0?foundryDrumTemplate:foundryCrateTemplate).clone(true);
   }
   if(game.map==='market'){
     const variant=(x*7+y*11+x*y*3)%8;
@@ -1009,7 +1100,12 @@ function tileModel(x:number,y:number,tile:1|2){
   group.add(core,lid);
   return group;
 }
-function removeTileObject(object:THREE.Object3D){props.remove(object);if(object.userData.procedural)disposeVisualGeometry(object);}
+function removeTileObject(object:THREE.Object3D){
+  const handles=tileInstances.get(object);
+  if(handles){for(const {batch,index} of handles){batch.setMatrixAt(index,hiddenInstanceMatrix);batch.instanceMatrix.needsUpdate=true;}tileInstances.delete(object);}
+  else props.remove(object);
+  if(object.userData.procedural)disposeVisualGeometry(object);
+}
 async function loadPlayerArt(){
   const request=++playerLoadRequest;
   try{
@@ -1070,7 +1166,7 @@ function renderMapOptions(){
     button.setAttribute('aria-pressed',String(map===selectedMap));
     button.addEventListener('click',()=>{
       if(map===selectedMap)return;
-      clearObjects();selectedMap=map;game.setMap(map);rebuildBoardSurface();applyMapTheme();syncStatic();resize();updateHud();
+      clearObjects();selectedMap=map;game.setMap(map);rebuildBoardSurface();applyMapTheme();syncStatic();batchStaticProps();resize();updateHud();
       mapHint.textContent=mapDescriptions[map];
       updateCopy();
       for(const option of mapOptions.querySelectorAll<HTMLButtonElement>('[data-map]'))option.setAttribute('aria-pressed',String(option.dataset.map===map));
@@ -1174,8 +1270,8 @@ function syncDynamic(){
   for(const [id,ttl] of game.fire){
     let obj=fireObjects.get(id);
     const kind=game.fireKinds.get(id)??'normal';
-    if(obj&&obj.userData.kind!==kind){effects.remove(obj);disposeFireObject(obj);fireObjects.delete(id);obj=undefined;}
-    if(!obj){const [x,y]=id.split(',').map(Number);obj=fireObject(kind,firePatterns.get(id));obj.position.copy(world({x,y}));effects.add(obj);fireObjects.set(id,obj);}
+    if(obj&&obj.userData.kind!==kind){releaseFireObject(obj);fireObjects.delete(id);obj=undefined;}
+    if(!obj){const [x,y]=id.split(',').map(Number);obj=acquireFireObject(kind,firePatterns.get(id));obj.position.copy(world({x,y}));effects.add(obj);fireObjects.set(id,obj);}
     const age=FIRE_DURATION-ttl,cell=obj.userData.cell as BlastCell|undefined;
     const distance=cell?.distance??0;
     const opening=Math.max(0,Math.min(1,(age-distance*0.035)/0.085));
@@ -1209,7 +1305,7 @@ function syncDynamic(){
       parts.chargeRing.scale.setScalar(0.6+1.1*Math.min(1,age/0.32));
     }
   }
-  for(const [id,obj] of fireObjects)if(!game.fire.has(id)){effects.remove(obj);disposeFireObject(obj);fireObjects.delete(id);firePatterns.delete(id);}
+  for(const [id,obj] of fireObjects)if(!game.fire.has(id)){releaseFireObject(obj);fireObjects.delete(id);firePatterns.delete(id);}
   for(const upgrade of game.upgrades){
     const id=key(upgrade.x,upgrade.y);
     if(!upgradeObjects.has(id)){const obj=upgradeObject(upgrade.type);obj.position.copy(world(upgrade));props.add(obj);upgradeObjects.set(id,obj);}
@@ -1248,16 +1344,16 @@ function syncDynamic(){
   playerObject.position.y=0.025*Math.sin(t*2);
 }
 function clearObjects(){
-  for(const obj of tileObjects.values())removeTileObject(obj);tileObjects.clear();
+  for(const obj of tileObjects.values())removeTileObject(obj);tileObjects.clear();clearStaticBatches();
   for(const obj of bombObjects.values()){props.remove(obj);disposeBombObject(obj);}bombObjects.clear();
   for(const obj of cartObjects.values())props.remove(obj);cartObjects.clear();
   for(const obj of cannonShotObjects.values())effects.remove(obj);cannonShotObjects.clear();
   for(const obj of enemyObjects.values())actors.remove(obj);enemyObjects.clear();
   for(const art of enemyArt.values())art.mixer.stopAllAction();enemyArt.clear();
-  for(const obj of fireObjects.values()){effects.remove(obj);disposeFireObject(obj);}fireObjects.clear();firePatterns.clear();
+  for(const obj of fireObjects.values())releaseFireObject(obj);fireObjects.clear();firePatterns.clear();
   for(const obj of upgradeObjects.values()){props.remove(obj);disposeVisualGeometry(obj);}upgradeObjects.clear();
-  for(const p of particles){effects.remove(p.object);(p.object.material as THREE.Material).dispose();}particles.length=0;
-  for(const fx of spriteEffects){effects.remove(fx.object);fx.object.material.dispose();}spriteEffects.length=0;
+  for(const p of particles){effects.remove(p.object);(p.object.geometry===splinterGeometry?splinterPool:particlePool).push(p.object);}particles.length=0;
+  for(const fx of spriteEffects){effects.remove(fx.object);spritePool.push(fx.object);}spriteEffects.length=0;
   for(const scorch of scorches){board.remove(scorch.object);scorch.object.geometry.dispose();(scorch.object.material as THREE.Material).dispose();}scorches.length=0;
   for(const wave of shockwaves){effects.remove(wave.object);wave.material.dispose();wave.object.geometry.dispose();}shockwaves.length=0;
   if(portalObjectRef){props.remove(portalObjectRef);portalObjectRef=null;}
@@ -1381,7 +1477,7 @@ function prepareMap(map:MapType,seed?:number,onlineMatch=false){
   clearObjects();game.map=map;game.onlineLobby=map==='lobby'&&!!lobbyConnection;game.onlineMatch=onlineMatch;game.onlineMatchGuest=onlineMatch&&lobbySelfId!==lobbyHostId;game.reset(seed);game.setDifficulty(selectedDifficulty);rebuildBoardSurface();
   playerObject.position.copy(world(game.player));
   camera.zoom=map==='lobby'?1.22:1;camera.updateProjectionMatrix();
-  applyMapTheme();syncStatic();resize();updateHud();
+  applyMapTheme();syncStatic();batchStaticProps();resize();updateHud();
 }
 function leaveLobby(){
   lobbyConnection?.close();lobbyConnection=null;lobbyCode='';lobbySelfId='';
@@ -1595,6 +1691,8 @@ for(const target of [stage,mobileControls]){
 
 let last=performance.now(),accumulator=0,lastStatus=game.status,footstepTimer=0,cameraJolt=0,hudTimer=0;
 let performanceWindow=0,slowFrames=0;
+const reportRenderStats=new URLSearchParams(location.search).has('perf');
+let statsAt=performance.now(),statsFrames=0,statsCalls=0;
 const cameraRest=camera.position.clone();
 function frame(now:number){
   requestAnimationFrame(frame);
@@ -1691,7 +1789,7 @@ function frame(now:number){
     }
     if(event.type==='enemy'){burst(event.x,event.y,'#eab0ff',12);showToast('GEGNER AUSGESCHALTET!');beep(660,0.14,'triangle',0.04);}
   }
-  if(staticDirty)syncStatic();
+  if(staticDirty){syncStatic();batchStaticProps();}
   if(game.onlineMatch&&game.status==='lost'&&!outSent){
     outSent=true;lobbyConnection?.send({type:'out'});game.status='running';game.player.invincible=Infinity;
     showToast('AUSGESCHIEDEN · MATCH LÄUFT WEITER');
@@ -1705,13 +1803,20 @@ function frame(now:number){
   if(game.status==='running'){playerArt?.mixer.update(dt);for(const art of enemyArt.values())art.mixer.update(dt);for(const art of remotePlayerArt.values())art.mixer.update(dt);}
   hudTimer-=dt;if(hudTimer<=0){updateHud();hudTimer=0.2;}
   renderer.render(scene,camera);
+  if(reportRenderStats){
+    statsFrames++;statsCalls+=renderer.info.render.calls;
+    if(now-statsAt>=3000){
+      console.info(`[render] map=${game.map} fps=${(statsFrames*1000/(now-statsAt)).toFixed(1)} calls=${Math.round(statsCalls/statsFrames)} triangles=${renderer.info.render.triangles}`);
+      statsAt=now;statsFrames=0;statsCalls=0;
+    }
+  }
 }
 renderCharacterOptions();renderDifficultyOptions();renderMapOptions();
 const inviteCode=new URL(location.href).searchParams.get('lobby')?.toUpperCase()??'';
 if(/^[A-HJ-NP-Z2-9]{6}$/.test(inviteCode))openLobbySetup('join',inviteCode);
 const assetLoading=document.querySelector<HTMLElement>('#asset-loading')!;
 void Promise.all([loadKenneyAssets(),loadBombAssets(),loadDungeonAssets(),loadMarketAssets(),loadGraveyardAssets(),loadPirateAssets(),loadUpgradeAssets()]).then(()=>{
-  playerObject.position.copy(world(game.player));applyMapTheme();syncStatic();updateHud();
+  assetsReady=true;playerObject.position.copy(world(game.player));applyMapTheme();syncStatic();batchStaticProps();updateHud();
   assetLoading.remove();last=performance.now();requestAnimationFrame(frame);
 }).catch(error=>{
   console.error('Could not preload game assets',error);
