@@ -507,8 +507,17 @@ function upgradeObject(type:UpgradeType){
   const base=rounded(0.9,0.16,0.9,0.09,accent);base.position.y=0;icon.add(base);
   const rim=rounded(0.84,0.035,0.84,0.06,pickupFrame);rim.position.y=0.096;icon.add(rim);
   const face=mesh(new THREE.PlaneGeometry(0.93,0.93),upgradeIconMats[type],false);face.position.y=0.66;icon.add(face);
-  g.userData.icon=icon;g.userData.face=face;
+  g.userData.icon=icon;g.userData.face=face;g.userData.type=type;
   return g;
+}
+const upgradePool=new Map<UpgradeType,THREE.Object3D[]>();
+function acquireUpgradeObject(type:UpgradeType){return upgradePool.get(type)?.pop()??upgradeObject(type);}
+function releaseUpgradeObject(object:THREE.Object3D){
+  props.remove(object);
+  const type=object.userData.type as UpgradeType;
+  const pool=upgradePool.get(type)??[];
+  if(pool.length<4){pool.push(object);upgradePool.set(type,pool);}
+  else disposeVisualGeometry(object);
 }
 
 type AnimatedArt={model:THREE.Object3D;mixer:THREE.AnimationMixer;idle:THREE.AnimationAction|null;walk:THREE.AnimationAction|null;active:THREE.AnimationAction|null};
@@ -1332,14 +1341,16 @@ function syncDynamic(){
   for(const [id,obj] of fireObjects)if(!game.fire.has(id)){releaseFireObject(obj);fireObjects.delete(id);firePatterns.delete(id);}
   for(const upgrade of game.upgrades){
     const id=key(upgrade.x,upgrade.y);
-    if(!upgradeObjects.has(id)){const obj=upgradeObject(upgrade.type);obj.position.copy(world(upgrade));props.add(obj);upgradeObjects.set(id,obj);}
+    const existing=upgradeObjects.get(id);
+    if(existing&&existing.userData.type!==upgrade.type){releaseUpgradeObject(existing);upgradeObjects.delete(id);}
+    if(!upgradeObjects.has(id)){const obj=acquireUpgradeObject(upgrade.type);obj.position.copy(world(upgrade));props.add(obj);upgradeObjects.set(id,obj);}
     const obj=upgradeObjects.get(id)!;
     const icon=obj.userData.icon as THREE.Group;
     icon.position.y=0.14+0.06*Math.sin(performance.now()*0.004+upgrade.x);
     icon.rotation.y=0;
     (obj.userData.face as THREE.Mesh).quaternion.copy(camera.quaternion);
   }
-  for(const [id,obj] of upgradeObjects)if(!game.upgrades.some(u=>key(u.x,u.y)===id)){props.remove(obj);disposeVisualGeometry(obj);upgradeObjects.delete(id);}
+  for(const [id,obj] of upgradeObjects)if(!game.upgrades.some(u=>key(u.x,u.y)===id)){releaseUpgradeObject(obj);upgradeObjects.delete(id);}
   if(portalObjectRef){portalObjectRef.rotation.y+=0.012;portalObjectRef.position.y=0.04*Math.sin(performance.now()*0.003);}
   for(const marker of ghostGraveVisuals.children){
     const grave=marker.userData.grave as Point;
@@ -1375,7 +1386,7 @@ function clearObjects(){
   for(const obj of enemyObjects.values())actors.remove(obj);enemyObjects.clear();
   for(const art of enemyArt.values())art.mixer.stopAllAction();enemyArt.clear();
   for(const obj of fireObjects.values())releaseFireObject(obj);fireObjects.clear();firePatterns.clear();
-  for(const obj of upgradeObjects.values()){props.remove(obj);disposeVisualGeometry(obj);}upgradeObjects.clear();
+  for(const obj of upgradeObjects.values())releaseUpgradeObject(obj);upgradeObjects.clear();
   for(const p of particles){effects.remove(p.object);(p.object.geometry===splinterGeometry?splinterPool:particlePool).push(p.object);}particles.length=0;
   for(const fx of spriteEffects){effects.remove(fx.object);spritePool.push(fx.object);}spriteEffects.length=0;
   for(const scorch of scorches)releaseScorch(scorch);scorches.length=0;
@@ -1748,6 +1759,7 @@ function frame(now:number){
     playerMoving=game.move(dx,dy,1/60,facing)||playerMoving;
     game.update(1/60);accumulator-=1/60;
   }
+  const afterGameUpdate=reportRenderStats?performance.now():0;
   if(lobbyConnection&&roomPhase==='match'&&!game.onlineMatchGuest){
     worldSendTimer-=dt;
     if(worldSendTimer<=0){
@@ -1765,9 +1777,10 @@ function frame(now:number){
     }
   }
   if(playerMoving&&footstepTimer===0){beep(260,0.025,'sine',0.008);footstepTimer=0.18;}
-  let staticDirty=false;
+  let staticDirty=false,explodedThisFrame=false;
   for(const event of game.drainEvents()){
     if(event.type==='explode'){
+      explodedThisFrame=true;
       if(lobbyConnection&&!event.remoteOwner&&event.bombId!==undefined){
         lobbyConnection.send({type:'detonate',id:event.bombId,bot:game.onlineMatch&&event.bot});
       }
@@ -1819,7 +1832,9 @@ function frame(now:number){
     }
     if(event.type==='enemy'){burst(event.x,event.y,'#eab0ff',12);showToast('GEGNER AUSGESCHALTET!');beep(660,0.14,'triangle',0.04);}
   }
+  const afterEvents=reportRenderStats?performance.now():0;
   if(staticDirty){syncStatic();batchStaticProps();}
+  const afterStatic=reportRenderStats?performance.now():0;
   if(game.onlineMatch&&game.status==='lost'&&!outSent){
     outSent=true;lobbyConnection?.send({type:'out'});game.status='running';game.player.invincible=Infinity;
     showToast('AUSGESCHIEDEN · MATCH LÄUFT WEITER');
@@ -1827,6 +1842,7 @@ function frame(now:number){
   if(lastStatus!==game.status){if(!game.onlineMatch&&(game.status==='won'||game.status==='lost'))showResult();lastStatus=game.status;}
   if(toastTimer>0){toastTimer-=dt;if(toastTimer<=0)toast.classList.add('hidden');}
   updateParticles(dt);updateSpriteEffects(dt);updateScorches(dt);updateShockwaves(dt);syncDynamic();
+  const afterDynamic=reportRenderStats?performance.now():0;
   cameraJolt=Math.max(0,cameraJolt-dt*0.8);
   camera.position.copy(cameraRest);
   if(cameraJolt>0){camera.position.x+=Math.sin(now*0.071)*cameraJolt;camera.position.z+=Math.sin(now*0.096)*cameraJolt*0.6;}
@@ -1834,6 +1850,7 @@ function frame(now:number){
   hudTimer-=dt;if(hudTimer<=0){updateHud();hudTimer=0.2;}
   const renderStarted=reportRenderStats?performance.now():0;
   renderer.render(scene,camera);
+  if(reportRenderStats&&explodedThisFrame)console.info(`[explosion] map=${game.map} game=${(afterGameUpdate-frameStarted).toFixed(1)} events=${(afterEvents-afterGameUpdate).toFixed(1)} static=${(afterStatic-afterEvents).toFixed(1)} dynamic=${(afterDynamic-afterStatic).toFixed(1)} render=${(performance.now()-renderStarted).toFixed(1)} calls=${renderer.info.render.calls}`);
   if(reportRenderStats){
     statsFrames++;statsCalls+=renderer.info.render.calls;
     statsMaxFrameMs=Math.max(statsMaxFrameMs,performance.now()-frameStarted);
@@ -1853,37 +1870,65 @@ function warmGameplayRendering(){
   prepareImpactNoise();
   for(const texture of Object.values(fxTextures))renderer.initTexture(texture);
   for(const material of Object.values(upgradeIconMats))if(material.map)renderer.initTexture(material.map);
+  const warmSpot=world(game.player);
   try{
+    renderer.render(scene,camera);
+    // Prime instance-buffer updates before the first crate is removed by an explosion.
+    const firstMatrices=staticBatches.map(batch=>{
+      const matrix=new THREE.Matrix4();batch.getMatrixAt(0,matrix);
+      batch.setMatrixAt(0,hiddenInstanceMatrix);batch.instanceMatrix.needsUpdate=true;
+      return matrix;
+    });
+    renderer.render(scene,camera);
+    staticBatches.forEach((batch,index)=>{batch.setMatrixAt(0,firstMatrices[index]);batch.instanceMatrix.needsUpdate=true;});
     renderer.render(scene,camera);
     const sampleBomb:Bomb={id:-1,x:0,y:0,fuse:BOMB_FUSE,range:1,ownerPass:false};
     for(const variant of Object.keys(bombColors) as BombVariant[]){
       const object=bombPool.get(variant)?.pop()??bombObject(sampleBomb,variant);
-      object.position.set(0,0,0);props.add(object);
+      object.position.copy(warmSpot);object.position.y=1.2;props.add(object);
       renderer.render(scene,camera);
       releaseBombObject(object);
+    }
+    if(!effectsPrewarmed)for(const type of Object.keys(upgradeColors) as UpgradeType[]){
+      const object=acquireUpgradeObject(type);
+      object.position.copy(warmSpot);object.position.y=1.2;
+      (object.userData.face as THREE.Mesh).quaternion.copy(camera.quaternion);
+      props.add(object);renderer.render(scene,camera);releaseUpgradeObject(object);
     }
     for(const kind of Object.keys(blastPalette) as BlastKind[]){
       const warmFires:THREE.Object3D[]=[];
       for(const direction of [null,'up','right','down','left'] as const){
         for(let i=0;i<(kind==='normal'&&direction?3:1);i++){
           const object=acquireFireObject(kind,{x:0,y:0,distance:direction?1:0,direction});
-          object.position.set(0,0,0);effects.add(object);warmFires.push(object);
+          object.position.copy(warmSpot);object.position.y=1.2;
+          const parts=object.userData.parts as FireParts;
+          (parts.marker.material as THREE.MeshBasicMaterial).opacity=0.25;
+          (parts.ground.material as THREE.MeshBasicMaterial).opacity=0.6;
+          parts.flame.material.uniforms.uOpacity.value=1;
+          parts.outer.material.opacity=0.82;
+          parts.core.material.opacity=0.64;
+          parts.smoke.material.opacity=0.22;
+          if(parts.arc)parts.arc.material.opacity=0.62;
+          if(parts.light)parts.light.intensity=3.3;
+          if(parts.chargeRing)(parts.chargeRing.material as THREE.MeshBasicMaterial).opacity=0.55;
+          effects.add(object);warmFires.push(object);
         }
       }
       if(kind==='normal'&&!effectsPrewarmed){
-        shockwave(0,0,blastPalette.normal.edge);
-        markScorch(Math.floor(game.width/2),5);
+        shockwave(Math.round(game.player.x),Math.round(game.player.y),blastPalette.normal.edge);
+        const wave=shockwaves.at(-1);if(wave)wave.object.position.y=1.2;
+        markScorch(Math.round(game.player.x),Math.round(game.player.y));
       }
       const warmParticles:THREE.Mesh[]=[];
       const warmSprites:THREE.Sprite[]=[];
       if(kind==='normal'&&!effectsPrewarmed){
         for(let i=0;i<56;i++){
           const object=new THREE.Mesh(i<24?particleGeometry:splinterGeometry,new THREE.MeshBasicMaterial({color:'#ffd064',transparent:true,opacity:1,depthWrite:false}));
-          object.position.y=0.4;effects.add(object);warmParticles.push(object);
+          object.position.copy(warmSpot);object.position.y=1.6;effects.add(object);warmParticles.push(object);
         }
         for(let i=0;i<20;i++){
-          const object=new THREE.Sprite(fxMaterial(fxTextures.smoke,'#536078',0.4,false));
-          object.position.y=0.5;effects.add(object);warmSprites.push(object);
+          const object=new THREE.Sprite(i<10?fxMaterial(fxTextures.smoke,'#536078',0.4,false):fxMaterial(fxTextures.flare,'#ffe8a5',0.65));
+          object.position.copy(warmSpot);object.position.y=1.7;effects.add(object);warmSprites.push(object);
         }
       }
       renderer.render(scene,camera);
